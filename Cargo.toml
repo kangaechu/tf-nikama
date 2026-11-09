@@ -17,10 +17,10 @@ path = "src/main.rs"
 anyhow = "1"
 async-trait = "0.1"
 aws-config = { version = "1", features = ["behavior-version-latest"] }
-aws-sdk-cognitoidentity = "1"
-aws-sdk-dynamodb = "1"
-aws-sdk-s3 = "1"
-aws-sdk-sts = "1"
+aws-sdk-cognitoidentity = { version = "1", default-features = false, features = ["rt-tokio", "default-https-client"] }
+aws-sdk-dynamodb = { version = "1", default-features = false, features = ["rt-tokio", "default-https-client"] }
+aws-sdk-s3 = { version = "1", default-features = false, features = ["rt-tokio", "default-https-client", "http-1x", "sigv4a"] }
+aws-sdk-sts = { version = "1", default-features = false, features = ["rt-tokio", "default-https-client", "sigv4a"] }
 aws-credential-types = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 clap = { version = "4", features = ["derive", "env"] }
