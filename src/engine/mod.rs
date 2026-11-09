@@ -1,6 +1,8 @@
 //! Job model and execution engine (Terraform / OpenTofu).
 
 mod exec;
+#[cfg(test)]
+mod exec_tests;
 mod output;
 mod plan_json;
 mod runner;

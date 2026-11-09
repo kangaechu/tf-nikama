@@ -112,18 +112,22 @@ pub fn plan_summary_table(summary: &PlanSummary) -> String {
     out
 }
 
-/// `(added, changed, destroyed)` parsed from apply output; last match wins.
+/// `(added, changed, destroyed)` parsed from apply or destroy output; the
+/// last match wins. Handles both `Resources: 1 added, 2 changed, 3 destroyed`
+/// and the destroy form `Resources: 3 destroyed`.
 pub fn apply_summary_from_output(output: &str) -> Option<(u32, u32, u32)> {
     static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-    let re = RE
-        .get_or_init(|| regex::Regex::new(r"(\d+) added, (\d+) changed, (\d+) destroyed").unwrap());
+    let re = RE.get_or_init(|| {
+        regex::Regex::new(r"Resources: (?:(\d+) added, (\d+) changed, )?(\d+) destroyed").unwrap()
+    });
     let mut last = None;
     for cap in re.captures_iter(output) {
-        last = Some((
-            cap[1].parse().unwrap_or(0),
-            cap[2].parse().unwrap_or(0),
-            cap[3].parse().unwrap_or(0),
-        ));
+        let num = |i: usize| {
+            cap.get(i)
+                .and_then(|m| m.as_str().parse().ok())
+                .unwrap_or(0)
+        };
+        last = Some((num(1), num(2), num(3)));
     }
     last
 }
@@ -171,5 +175,9 @@ mod tests {
             Some((1, 2, 3))
         );
         assert_eq!(apply_summary_from_output("nothing"), None);
+        assert_eq!(
+            apply_summary_from_output("Destroy complete! Resources: 4 destroyed."),
+            Some((0, 0, 4))
+        );
     }
 }

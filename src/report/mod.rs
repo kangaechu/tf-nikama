@@ -2,6 +2,8 @@
 
 pub mod comment;
 pub mod drift;
+#[cfg(test)]
+mod tests;
 pub mod writer;
 
 pub use comment::{DetailKind, RowStatus, RunReport};

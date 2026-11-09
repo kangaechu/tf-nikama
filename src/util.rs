@@ -101,6 +101,13 @@ pub fn strip_ansi(s: &str) -> String {
     re.replace_all(s, "").into_owned()
 }
 
+/// Serialises tests that mutate process environment variables.
+#[cfg(test)]
+pub(crate) fn test_env_guard() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

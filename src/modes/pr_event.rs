@@ -267,7 +267,7 @@ pub async fn run(env: &Env, config: Arc<Config>, ctx: &GithubContext, github: Gi
     }
 }
 
-fn summarize(results: &[JobResult], lock_failed: bool) -> String {
+pub(super) fn summarize(results: &[JobResult], lock_failed: bool) -> String {
     let ok = results.iter().filter(|r| r.is_ok()).count();
     let failed = results.iter().filter(|r| !r.is_ok()).count();
     let changes = results
@@ -415,70 +415,94 @@ fn log_impacted(impacted: &[crate::config::Project]) {
     }
 }
 
+/// Result of the network-free part of the apply precondition check.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum ApplyGate {
+    Allowed,
+    Denied(String),
+    /// Branch protection reports `blocked`; the commit statuses decide.
+    CheckStatuses,
+}
+
 /// Apply is allowed when the PR is merged, mergeable, or every apply job has
 /// `skip_merge_check`.
+pub(super) fn apply_gate(pr: &crate::github::PrInfo, jobs: &[Job]) -> ApplyGate {
+    if jobs
+        .iter()
+        .filter(|j| j.command == Command::Apply)
+        .all(|j| j.skip_merge_check)
+    {
+        return ApplyGate::Allowed;
+    }
+    if pr.merged {
+        return ApplyGate::Allowed;
+    }
+    if pr.state == "closed" {
+        return ApplyGate::Denied("pull request is closed".into());
+    }
+    match (pr.mergeable, pr.mergeable_state.as_deref()) {
+        (Some(true), Some("clean"))
+        | (Some(true), Some("unstable"))
+        | (Some(true), Some("has_hooks")) => ApplyGate::Allowed,
+        (_, Some("blocked")) => ApplyGate::CheckStatuses,
+        (Some(false), state) => ApplyGate::Denied(format!(
+            "pull request is not mergeable (state: {})",
+            state.unwrap_or("unknown")
+        )),
+        (None, state) => ApplyGate::Denied(format!(
+            "GitHub has not computed mergeability yet (state: {}); retry in a moment",
+            state.unwrap_or("unknown")
+        )),
+        (Some(true), state) => ApplyGate::Denied(format!(
+            "pull request is not in a mergeable state ({})",
+            state.unwrap_or("unknown")
+        )),
+    }
+}
+
+/// When branch protection blocks the PR, accept if every *other* commit
+/// status is green (our own contexts are ignored).
+pub(super) fn check_required_statuses(
+    combined: &crate::github::client::CombinedStatus,
+    own_context: &str,
+) -> Result<(), String> {
+    let bad: Vec<String> = combined
+        .statuses
+        .iter()
+        .filter(|s| {
+            s.context != own_context
+                && !s.context.starts_with("digger/")
+                && !s.context.starts_with("nikama/")
+        })
+        .filter(|s| s.state != "success")
+        .map(|s| format!("{} ({})", s.context, s.state))
+        .collect();
+    if bad.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "pull request is blocked by required checks: {}",
+            bad.join(", ")
+        ))
+    }
+}
+
 async fn apply_allowed(
     github: &GithubClient,
     pr: &crate::github::PrInfo,
     jobs: &[Job],
     own_context: &str,
 ) -> Result<(), String> {
-    if jobs
-        .iter()
-        .filter(|j| j.command == Command::Apply)
-        .all(|j| j.skip_merge_check)
-    {
-        return Ok(());
-    }
-    if pr.merged {
-        return Ok(());
-    }
-    if pr.state == "closed" {
-        return Err("pull request is closed".into());
-    }
-    match (pr.mergeable, pr.mergeable_state.as_deref()) {
-        (Some(true), Some("clean"))
-        | (Some(true), Some("unstable"))
-        | (Some(true), Some("has_hooks")) => Ok(()),
-        (_, Some("blocked")) => {
-            // Branch protection is blocking; accept if every *other* commit
-            // status is green (our own contexts are ignored).
+    match apply_gate(pr, jobs) {
+        ApplyGate::Allowed => Ok(()),
+        ApplyGate::Denied(reason) => Err(reason),
+        ApplyGate::CheckStatuses => {
             let combined = github
                 .combined_status(&pr.head_sha)
                 .await
                 .map_err(|e| format!("could not read commit status: {}", e))?;
-            let bad: Vec<String> = combined
-                .statuses
-                .iter()
-                .filter(|s| {
-                    s.context != own_context
-                        && !s.context.starts_with("digger/")
-                        && !s.context.starts_with("nikama/")
-                })
-                .filter(|s| s.state != "success")
-                .map(|s| format!("{} ({})", s.context, s.state))
-                .collect();
-            if bad.is_empty() {
-                Ok(())
-            } else {
-                Err(format!(
-                    "pull request is blocked by required checks: {}",
-                    bad.join(", ")
-                ))
-            }
+            check_required_statuses(&combined, own_context)
         }
-        (Some(false), state) => Err(format!(
-            "pull request is not mergeable (state: {})",
-            state.unwrap_or("unknown")
-        )),
-        (None, state) => Err(format!(
-            "GitHub has not computed mergeability yet (state: {}); retry in a moment",
-            state.unwrap_or("unknown")
-        )),
-        (Some(true), state) => Err(format!(
-            "pull request is not in a mergeable state ({})",
-            state.unwrap_or("unknown")
-        )),
     }
 }
 

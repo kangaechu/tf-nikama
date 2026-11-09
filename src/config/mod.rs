@@ -5,6 +5,8 @@ mod generate;
 mod graph;
 mod impact;
 mod raw;
+#[cfg(test)]
+mod tests;
 
 pub use graph::DependencyGraph;
 pub use impact::{impacted_projects, matches_patterns, normalize_path};

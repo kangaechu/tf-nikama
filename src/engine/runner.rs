@@ -57,16 +57,62 @@ pub struct IacRunner {
 
 const LOCK_TIMEOUT: &str = "-lock-timeout=3m";
 
+pub(crate) fn init_args(extra_args: &[String]) -> Vec<String> {
+    let mut args = vec!["init".to_string()];
+    args.extend(expand_args(extra_args));
+    args.push("-input=false".into());
+    args.push("-no-color".into());
+    args
+}
+
+pub(crate) fn plan_args(extra_args: &[String], plan_path: &Path) -> Vec<String> {
+    let mut args = vec!["plan".to_string()];
+    args.extend(expand_args(extra_args));
+    args.extend([
+        "-input=false".to_string(),
+        "-no-color".to_string(),
+        "-detailed-exitcode".to_string(),
+        LOCK_TIMEOUT.to_string(),
+        "-out".to_string(),
+        plan_path.to_string_lossy().to_string(),
+    ]);
+    args
+}
+
+pub(crate) fn apply_args(extra_args: &[String], plan_path: Option<&Path>) -> Vec<String> {
+    let mut args = vec!["apply".to_string()];
+    args.extend(expand_args(extra_args));
+    args.extend([
+        LOCK_TIMEOUT.to_string(),
+        "-input=false".to_string(),
+        "-no-color".to_string(),
+        "-auto-approve".to_string(),
+    ]);
+    if let Some(p) = plan_path {
+        args.push(p.to_string_lossy().to_string());
+    }
+    args
+}
+
+pub(crate) fn destroy_args(extra_args: &[String]) -> Vec<String> {
+    let mut args = vec!["destroy".to_string()];
+    args.extend(expand_args(extra_args));
+    args.extend([
+        LOCK_TIMEOUT.to_string(),
+        "-input=false".to_string(),
+        "-no-color".to_string(),
+        "-auto-approve".to_string(),
+    ]);
+    args
+}
+
 impl IacRunner {
     pub async fn init(
         &self,
         extra_args: &[String],
         env: &BTreeMap<String, String>,
     ) -> std::io::Result<CmdOutput> {
-        let mut args = vec!["init".to_string()];
-        args.extend(expand_args(extra_args));
-        args.push("-input=false".into());
-        args.push("-no-color".into());
+        let args = init_args(extra_args);
         let out = self.run(&args, env, true).await?;
         if !out.success() {
             return Ok(out);
@@ -112,17 +158,7 @@ impl IacRunner {
         env: &BTreeMap<String, String>,
         plan_path: &Path,
     ) -> std::io::Result<CmdOutput> {
-        let mut args = vec!["plan".to_string()];
-        args.extend(expand_args(extra_args));
-        args.extend([
-            "-input=false".to_string(),
-            "-no-color".to_string(),
-            "-detailed-exitcode".to_string(),
-            LOCK_TIMEOUT.to_string(),
-            "-out".to_string(),
-            plan_path.to_string_lossy().to_string(),
-        ]);
-        self.run(&args, env, true).await
+        self.run(&plan_args(extra_args, plan_path), env, true).await
     }
 
     pub async fn apply(
@@ -131,18 +167,8 @@ impl IacRunner {
         env: &BTreeMap<String, String>,
         plan_path: Option<&Path>,
     ) -> std::io::Result<CmdOutput> {
-        let mut args = vec!["apply".to_string()];
-        args.extend(expand_args(extra_args));
-        args.extend([
-            LOCK_TIMEOUT.to_string(),
-            "-input=false".to_string(),
-            "-no-color".to_string(),
-            "-auto-approve".to_string(),
-        ]);
-        if let Some(p) = plan_path {
-            args.push(p.to_string_lossy().to_string());
-        }
-        self.run(&args, env, true).await
+        self.run(&apply_args(extra_args, plan_path), env, true)
+            .await
     }
 
     pub async fn destroy(
@@ -150,15 +176,7 @@ impl IacRunner {
         extra_args: &[String],
         env: &BTreeMap<String, String>,
     ) -> std::io::Result<CmdOutput> {
-        let mut args = vec!["destroy".to_string()];
-        args.extend(expand_args(extra_args));
-        args.extend([
-            LOCK_TIMEOUT.to_string(),
-            "-input=false".to_string(),
-            "-no-color".to_string(),
-            "-auto-approve".to_string(),
-        ]);
-        self.run(&args, env, true).await
+        self.run(&destroy_args(extra_args), env, true).await
     }
 
     pub async fn show_json(

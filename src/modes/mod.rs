@@ -4,6 +4,8 @@ pub mod drift;
 pub mod manual;
 pub mod pr_event;
 pub mod run;
+#[cfg(test)]
+mod tests;
 
 /// Process exit codes (DESIGN.md §15.3).
 pub mod exit {

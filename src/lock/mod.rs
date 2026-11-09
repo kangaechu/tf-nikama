@@ -1,6 +1,8 @@
 //! PR-level project locks.
 
 mod dynamodb;
+#[cfg(test)]
+mod tests;
 
 pub use dynamodb::DynamoDbLock;
 
