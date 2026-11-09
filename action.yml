@@ -1,0 +1,164 @@
+name: tf-nikama
+description: Backendless Terraform / OpenTofu plan & apply on pull requests (parallel plans, one PR comment, DynamoDB locks)
+author: kangaechu
+
+inputs:
+  version:
+    description: "nikama release tag to install (e.g. v0.1.0). Defaults to the action ref."
+    required: false
+    default: ""
+  mode:
+    description: "Empty for PR events, `manual` for workflow_dispatch, `drift-detection` for scheduled drift runs"
+    required: false
+    default: ""
+  command:
+    description: "Manual mode only: `digger plan`, `digger apply` or `digger destroy`"
+    required: false
+    default: ""
+  project:
+    description: "Manual mode only: project name"
+    required: false
+    default: ""
+  config-file:
+    description: "Alternative configuration file path (default: nikama.yml)"
+    required: false
+    default: ""
+  max-parallel:
+    description: "Maximum number of concurrent plans (overrides nikama.yml)"
+    required: false
+    default: ""
+  lock-provider:
+    description: "`aws` (DynamoDB, default) or `noop`"
+    required: false
+    default: "aws"
+  lock-table:
+    description: "DynamoDB table for PR locks"
+    required: false
+    default: "DiggerDynamoDBLockTable"
+  upload-plan-destination:
+    description: "`aws` to store plan files in S3, empty to disable"
+    required: false
+    default: ""
+  upload-plan-destination-s3-bucket:
+    description: "S3 bucket for plan files"
+    required: false
+    default: ""
+  upload-plan-destination-s3-encryption-enabled:
+    description: "Enable server-side encryption for stored plans"
+    required: false
+    default: "false"
+  upload-plan-destination-s3-encryption-type:
+    description: "AES256 or KMS"
+    required: false
+    default: "AES256"
+  upload-plan-destination-s3-encryption-kms-key-id:
+    description: "KMS key id when encryption type is KMS"
+    required: false
+    default: ""
+  reporting-strategy:
+    description: "comments_per_run (single comment, default), latest_run_comment, or per_project"
+    required: false
+    default: "comments_per_run"
+  drift-detection-slack-notification-url:
+    description: "Slack incoming webhook for drift notifications"
+    required: false
+    default: ""
+  drift-github-issues:
+    description: "Create/update a GitHub issue per drifted project"
+    required: false
+    default: "false"
+  block-filters:
+    description: "Drift mode: comma-separated block names to include"
+    required: false
+    default: ""
+  log-level:
+    description: "ERROR, WARN, INFO or DEBUG"
+    required: false
+    default: "INFO"
+  github-token:
+    description: "Token used for the GitHub API (defaults to github.token)"
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  pr_number:
+    description: "Pull request number the run acted on"
+    value: ${{ steps.run.outputs.pr_number }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install nikama
+      shell: bash
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+        ACTION_REF: ${{ github.action_ref }}
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        set -euo pipefail
+        VERSION="${INPUT_VERSION:-$ACTION_REF}"
+        case "$(uname -s)" in
+          Linux)  OS=linux ;;
+          Darwin) OS=darwin ;;
+          *) echo "::error::unsupported OS $(uname -s)"; exit 1 ;;
+        esac
+        case "$(uname -m)" in
+          x86_64|amd64)  ARCH=x86_64 ;;
+          aarch64|arm64) ARCH=aarch64 ;;
+          *) echo "::error::unsupported architecture $(uname -m)"; exit 1 ;;
+        esac
+        BIN_DIR="$RUNNER_TEMP/nikama-bin"
+        mkdir -p "$BIN_DIR"
+        if [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+          ASSET="nikama-${OS}-${ARCH}.tar.gz"
+          URL="https://github.com/kangaechu/tf-nikama/releases/download/${VERSION}/${ASSET}"
+          echo "Downloading ${URL}"
+          curl -fsSL -o "$BIN_DIR/$ASSET" "$URL"
+          tar -xzf "$BIN_DIR/$ASSET" -C "$BIN_DIR"
+        else
+          echo "No release tag given (ref: ${VERSION}); building from source with cargo"
+          if ! command -v cargo >/dev/null; then
+            curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal
+            export PATH="$HOME/.cargo/bin:$PATH"
+          fi
+          cargo build --release --manifest-path "$GITHUB_ACTION_PATH/Cargo.toml"
+          cp "$GITHUB_ACTION_PATH/target/release/nikama" "$BIN_DIR/nikama"
+        fi
+        chmod +x "$BIN_DIR/nikama"
+        echo "$BIN_DIR" >> "$GITHUB_PATH"
+        "$BIN_DIR/nikama" --version
+
+    - name: Run nikama
+      id: run
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        GITHUB_CONTEXT: ${{ toJson(github) }}
+        INPUT_DIGGER_MODE: ${{ inputs.mode }}
+        INPUT_DIGGER_COMMAND: ${{ inputs.command }}
+        INPUT_DIGGER_PROJECT: ${{ inputs.project }}
+        INPUT_DIGGER_BLOCK_FILTERS: ${{ inputs.block-filters }}
+        NIKAMA_CONFIG: ${{ inputs.config-file }}
+        NIKAMA_MAX_PARALLEL: ${{ inputs.max-parallel }}
+        NIKAMA_LOG_LEVEL: ${{ inputs.log-level }}
+        LOCK_PROVIDER: ${{ inputs.lock-provider }}
+        NIKAMA_LOCK_TABLE: ${{ inputs.lock-table }}
+        PLAN_UPLOAD_DESTINATION: ${{ inputs.upload-plan-destination }}
+        AWS_S3_BUCKET: ${{ inputs.upload-plan-destination-s3-bucket }}
+        PLAN_UPLOAD_S3_ENCRYPTION_ENABLED: ${{ inputs.upload-plan-destination-s3-encryption-enabled }}
+        PLAN_UPLOAD_S3_ENCRYPTION_TYPE: ${{ inputs.upload-plan-destination-s3-encryption-type }}
+        PLAN_UPLOAD_S3_ENCRYPTION_KMS_ID: ${{ inputs.upload-plan-destination-s3-encryption-kms-key-id }}
+        REPORTING_STRATEGY: ${{ inputs.reporting-strategy }}
+        INPUT_DRIFT_DETECTION_SLACK_NOTIFICATION_URL: ${{ inputs.drift-detection-slack-notification-url }}
+        NIKAMA_DRIFT_GITHUB_ISSUES: ${{ inputs.drift-github-issues }}
+      run: |
+        set -euo pipefail
+        # Empty inputs must be unset, not empty strings, for clap `env` handling.
+        for v in NIKAMA_CONFIG NIKAMA_MAX_PARALLEL; do
+          if [[ -z "${!v}" ]]; then unset "$v"; fi
+        done
+        nikama
+
+branding:
+  icon: layers
+  color: orange

@@ -1,0 +1,67 @@
+# Example nikama.yml
+#
+# The schema is the supported subset of Digger's digger.yml. Unsupported keys
+# (terragrunt, pulumi, backend-only settings) are rejected at load time.
+
+projects:
+  - name: network
+    dir: infra/network
+  - name: app
+    dir: infra/app
+    depends_on: [network]
+    workflow: with_vars
+  - name: app-staging
+    dir: infra/app
+    workspace: staging
+    depends_on: [network]
+    workflow: with_vars
+    aws_role_to_assume:
+      aws_role_region: ap-northeast-1
+      state: arn:aws:iam::123456789012:role/tf-state
+      command: arn:aws:iam::123456789012:role/tf-apply
+
+generate_projects:
+  blocks:
+    - block_name: services
+      include: "services/**"
+      exclude: "services/_shared/**"
+      workflow: default
+
+workflows:
+  default: null # built-in: plan = [init, plan], apply = [init, apply]
+  with_vars:
+    env_vars:
+      state:
+        - name: AWS_REGION
+          value: ap-northeast-1
+      commands:
+        - name: TF_VAR_api_key
+          value_from: API_KEY
+    plan:
+      steps:
+        - init:
+            extra_args: ["-upgrade"]
+        - plan:
+            extra_args: ["-var-file=env.tfvars"]
+        - run: "echo plan finished for $PROJECT_NAME >> $NIKAMA_OUT"
+    apply:
+      steps:
+        - init
+        - apply
+    workflow_configuration:
+      on_pull_request_pushed: ["digger plan"]
+      on_pull_request_closed: ["digger unlock"]
+      on_commit_to_default: ["digger unlock"]
+
+pr_locks: true
+auto_merge: false
+dependency_configuration:
+  mode: hard
+
+concurrency:
+  max_parallel: 4
+  apply_parallelism: 1
+
+comment:
+  mode: single        # single | per_project | latest
+  show_empty_plans: table

@@ -1,0 +1,5 @@
+# Fixture: must be rejected at load time (terragrunt is unsupported).
+projects:
+  - name: x
+    dir: x
+    terragrunt: true

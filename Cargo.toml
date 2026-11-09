@@ -1,0 +1,51 @@
+[package]
+name = "nikama"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+description = "Backendless Terraform/OpenTofu PR automation for GitHub Actions (a Rust re-implementation of Digger's backendless mode)"
+license = "Apache-2.0"
+repository = "https://github.com/kangaechu/tf-nikama"
+readme = "README.md"
+default-run = "nikama"
+
+[[bin]]
+name = "nikama"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+async-trait = "0.1"
+aws-config = { version = "1", features = ["behavior-version-latest"] }
+aws-sdk-cognitoidentity = "1"
+aws-sdk-dynamodb = "1"
+aws-sdk-s3 = "1"
+aws-sdk-sts = "1"
+aws-credential-types = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+clap = { version = "4", features = ["derive", "env"] }
+globset = "0.4"
+petgraph = "0.6"
+regex = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+shell-words = "1"
+tempfile = "3"
+thiserror = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "sync", "time", "fs", "io-util"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+urlencoding = "2"
+walkdir = "2"
+
+[dev-dependencies]
+pretty_assertions = "1"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
