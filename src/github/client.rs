@@ -47,6 +47,8 @@ pub struct PrInfo {
     pub number: u64,
     pub head_ref: String,
     pub head_sha: String,
+    /// Test merge commit for open PRs; final merge commit after merging.
+    pub merge_commit_sha: Option<String>,
     pub base_ref: String,
     pub merged: bool,
     pub state: String,
@@ -269,6 +271,7 @@ impl GithubClient {
             number,
             head_ref: v["head"]["ref"].as_str().unwrap_or_default().to_string(),
             head_sha: v["head"]["sha"].as_str().unwrap_or_default().to_string(),
+            merge_commit_sha: v["merge_commit_sha"].as_str().map(str::to_string),
             base_ref: v["base"]["ref"].as_str().unwrap_or_default().to_string(),
             merged: v["merged"].as_bool().unwrap_or(false),
             state: v["state"].as_str().unwrap_or_default().to_string(),

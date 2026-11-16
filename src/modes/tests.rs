@@ -18,6 +18,7 @@ fn pr(merged: bool, state: &str, mergeable: Option<bool>, mergeable_state: Optio
         number: 1,
         head_ref: "f".into(),
         head_sha: "s".into(),
+        merge_commit_sha: None,
         base_ref: "main".into(),
         merged,
         state: state.into(),

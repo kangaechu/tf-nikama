@@ -1,5 +1,6 @@
 //! Execution modes: PR events, manual, drift detection.
 
+mod checkout;
 pub mod drift;
 pub mod manual;
 pub mod pr_event;

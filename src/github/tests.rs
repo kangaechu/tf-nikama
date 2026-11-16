@@ -57,12 +57,14 @@ async fn retries_after_rate_limit() {
             "head": {"ref": "feat", "sha": "abc"},
             "base": {"ref": "main", "sha": "def"},
             "merged": false, "state": "open", "draft": false,
+            "merge_commit_sha": "test-merge",
             "mergeable": true, "mergeable_state": "clean"
         })))
         .mount(&server)
         .await;
     let pr = client(&server).await.get_pr(1).await.unwrap();
     assert_eq!(pr.head_ref, "feat");
+    assert_eq!(pr.merge_commit_sha.as_deref(), Some("test-merge"));
     assert_eq!(pr.mergeable_state.as_deref(), Some("clean"));
     assert!(!pr.is_closed());
     assert_eq!(server.received_requests().await.unwrap().len(), 2);

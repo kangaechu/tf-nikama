@@ -149,6 +149,51 @@ pub async fn run(env: &Env, config: Arc<Config>, ctx: &GithubContext, github: Gi
         )
         .await;
 
+    // Validate before locks, approval checks or Terraform. Lock/unlock-only
+    // runs must still work after a branch has changed or disappeared.
+    let verified_head = if trigger
+        .jobs
+        .iter()
+        .any(|j| matches!(j.command, Command::Plan | Command::Apply | Command::Destroy))
+    {
+        match super::checkout::verify_snapshot(
+            &env.repo_root,
+            &trigger.head_sha,
+            &pr,
+            config.wakeup_word(),
+        )
+        .await
+        {
+            Ok(head) => Some(head),
+            Err(reason) => {
+                tracing::error!(%reason, "checkout validation failed");
+                let detail = reason.clone();
+                writer.update(move |r| {
+                    r.notes.push(detail.clone());
+                    for row in r.rows.values_mut() {
+                        row.status = RowStatus::Failed;
+                        row.detail_kind = Some(crate::report::DetailKind::Error);
+                        row.detail = Some(detail.clone());
+                    }
+                });
+                writer.finish().await;
+                writer_task.join().await;
+                let _ = github
+                    .set_status(
+                        &pr.head_sha,
+                        "failure",
+                        status_context,
+                        "checkout does not match PR snapshot; rerun with a fresh checkout",
+                        Some(&ctx.run_url()),
+                    )
+                    .await;
+                return exit::JOB_FAILED;
+            }
+        }
+    } else {
+        None
+    };
+
     // Locking (two-phase).
     let locker = match crate::lock::from_env(config.pr_locks.enabled()).await {
         Ok(backend) => Arc::new(PrLocker::new(backend, github.clone())),
@@ -262,7 +307,7 @@ pub async fn run(env: &Env, config: Arc<Config>, ctx: &GithubContext, github: Gi
         locker: Some(locker.clone()),
         writer: Some(writer.clone()),
         max_parallel: env.max_parallel.unwrap_or(config.concurrency.max_parallel),
-        head_sha: Some(pr.head_sha.clone()),
+        head_sha: verified_head,
         cli_config: env.cli_config.clone(),
     });
 
