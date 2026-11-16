@@ -116,6 +116,7 @@ permissions:
 concurrency:
   group: nikama-${{ github.event.pull_request.number || github.event.issue.number }}
   cancel-in-progress: false
+  queue: max
 
 jobs:
   nikama:
