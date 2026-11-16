@@ -150,7 +150,7 @@ jobs:
         with:
           role-to-assume: arn:aws:iam::123456789012:role/digger
           aws-region: ap-northeast-1
-      - uses: kangaechu/tf-nikama@v0.6.0
+      - uses: kangaechu/tf-nikama@v0.6.1
         with:
           upload-plan-destination: aws
           upload-plan-destination-s3-bucket: my-plan-bucket
@@ -227,7 +227,7 @@ jobs:
 ステップを置き換え、残りはそのままにしてください:
 
 ```yaml
-      - uses: kangaechu/tf-nikama@v0.6.0
+      - uses: kangaechu/tf-nikama@v0.6.1
         with:
           mode: manual
           command: digger apply
@@ -235,7 +235,7 @@ jobs:
 ```
 
 ```yaml
-      - uses: kangaechu/tf-nikama@v0.6.0
+      - uses: kangaechu/tf-nikama@v0.6.1
         with:
           mode: drift-detection
           drift-detection-slack-notification-url: ${{ secrets.SLACK_WEBHOOK }}
