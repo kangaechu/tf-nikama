@@ -7,6 +7,18 @@ use std::collections::{BTreeMap, BTreeSet};
 const VALID_APPLY_REQUIREMENTS: [&str; 3] = ["approved", "mergeable", "undiverged"];
 
 pub(super) fn convert(raw: RawConfig, dir: &Path) -> Result<Config, ConfigError> {
+    let timezone = raw
+        .timezone
+        .as_deref()
+        .unwrap_or("UTC")
+        .parse()
+        .map_err(|_| {
+            ConfigError::Validation(format!(
+                "timezone must be an IANA time zone such as Asia/Tokyo or UTC, got '{}'",
+                raw.timezone.as_deref().unwrap_or("UTC")
+            ))
+        })?;
+
     let dependency_mode = match raw
         .dependency_configuration
         .as_ref()
@@ -187,6 +199,7 @@ pub(super) fn convert(raw: RawConfig, dir: &Path) -> Result<Config, ConfigError>
     }
 
     Ok(Config {
+        timezone,
         allowed_plan_args,
         allowed_providers,
         projects,

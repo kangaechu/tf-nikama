@@ -12,6 +12,7 @@ use std::collections::BTreeMap;
 #[derive(Debug, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct RawConfig {
+    pub timezone: Option<String>,
     #[serde(default)]
     pub projects: Vec<RawProject>,
     #[serde(default)]

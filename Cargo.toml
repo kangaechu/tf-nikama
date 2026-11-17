@@ -23,6 +23,7 @@ aws-sdk-s3 = { version = "1", default-features = false, features = ["rt-tokio", 
 aws-sdk-sts = { version = "1", default-features = false, features = ["rt-tokio", "default-https-client", "sigv4a"] }
 aws-credential-types = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+chrono-tz = "0.10"
 clap = { version = "4", features = ["derive", "env"] }
 globset = "0.4"
 google-cloud-auth = { version = "1", default-features = false, features = ["default-rustls-provider"] }

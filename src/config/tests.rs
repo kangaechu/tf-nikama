@@ -42,6 +42,7 @@ fn defaults_are_applied() {
     assert!(c.traverse_to_nested_projects);
     assert_eq!(c.concurrency.max_parallel, 4);
     assert_eq!(c.concurrency.apply_parallelism, 1);
+    assert_eq!(c.timezone, chrono_tz::UTC);
     assert_eq!(c.comment.mode, CommentMode::Single);
     assert_eq!(c.comment.show_empty_plans, ShowEmptyPlans::Table);
 }
@@ -836,5 +837,15 @@ fn allowed_plan_args_are_validated_and_matched() {
     ] {
         let m = err_msg(load(&format!("projects: []\n{yaml}\n")));
         assert!(m.contains(msg), "{m}");
+    }
+}
+
+#[test]
+fn timezone_is_validated() {
+    let c = load("timezone: Asia/Tokyo\nprojects: []\n").unwrap();
+    assert_eq!(c.timezone, chrono_tz::Asia::Tokyo);
+    for invalid in ["", "Asia/Invalid", "+09:00"] {
+        let yaml = format!("timezone: '{}'\nprojects: []\n", invalid);
+        assert!(err_msg(load(&yaml)).contains("timezone must be an IANA time zone"));
     }
 }

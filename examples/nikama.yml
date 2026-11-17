@@ -95,6 +95,9 @@ concurrency:
   max_parallel: 4
   apply_parallelism: 1
 
+# Time zone for timestamps in PR reports (default: UTC).
+timezone: Asia/Tokyo
+
 comment:
   mode: single        # single | per_project | latest
   show_empty_plans: table

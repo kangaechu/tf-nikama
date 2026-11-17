@@ -15,6 +15,7 @@ const MARKER: &str = "<!-- nikama:run=42:attempt=1 -->";
 
 fn report(command: Command, show: ShowEmptyPlans) -> RunReport {
     let mut r = RunReport::new(
+        chrono_tz::UTC,
         MARKER,
         command,
         "https://gh/o/r/actions/runs/42",
@@ -80,7 +81,14 @@ fn finished_header_and_empty_plan_modes() {
 
 #[test]
 fn apply_table_uses_apply_summary() {
-    let mut r = RunReport::new(MARKER, Command::Apply, "u", ShowEmptyPlans::Table, "nikama");
+    let mut r = RunReport::new(
+        chrono_tz::UTC,
+        MARKER,
+        Command::Apply,
+        "u",
+        ShowEmptyPlans::Table,
+        "nikama",
+    );
     let row = r.row_mut("p");
     row.status = RowStatus::Applied;
     row.apply_summary = Some(ApplySummary {
@@ -99,7 +107,14 @@ fn apply_table_uses_apply_summary() {
 
 #[test]
 fn apply_row_shows_pre_plan_table_when_present() {
-    let mut r = RunReport::new(MARKER, Command::Apply, "u", ShowEmptyPlans::Table, "nikama");
+    let mut r = RunReport::new(
+        chrono_tz::UTC,
+        MARKER,
+        Command::Apply,
+        "u",
+        ShowEmptyPlans::Table,
+        "nikama",
+    );
     let row = r.row_mut("p");
     row.status = RowStatus::Applied;
     row.detail_kind = Some(DetailKind::Apply);
@@ -116,7 +131,14 @@ fn apply_row_shows_pre_plan_table_when_present() {
 
 #[test]
 fn error_detail_and_failure_flags() {
-    let mut r = RunReport::new(MARKER, Command::Plan, "u", ShowEmptyPlans::Table, "nikama");
+    let mut r = RunReport::new(
+        chrono_tz::UTC,
+        MARKER,
+        Command::Plan,
+        "u",
+        ShowEmptyPlans::Table,
+        "nikama",
+    );
     let row = r.row_mut("p");
     row.status = RowStatus::Failed;
     row.detail_kind = Some(DetailKind::Error);
@@ -145,6 +167,7 @@ fn per_project_rendering_has_distinct_markers() {
 #[test]
 fn long_details_are_truncated_with_a_log_link() {
     let mut r = RunReport::new(
+        chrono_tz::UTC,
         MARKER,
         Command::Plan,
         "https://run",
@@ -192,7 +215,14 @@ async fn writer_creates_then_edits_single_comment() {
         .mount(&server)
         .await;
 
-    let mut report = RunReport::new(MARKER, Command::Plan, "u", ShowEmptyPlans::Table, "nikama");
+    let mut report = RunReport::new(
+        chrono_tz::UTC,
+        MARKER,
+        Command::Plan,
+        "u",
+        ShowEmptyPlans::Table,
+        "nikama",
+    );
     report.row_mut("p");
     let (writer, task) = ReportWriter::start(github(&server), 5, report, CommentMode::Single);
     writer.flush().await;
@@ -236,7 +266,14 @@ async fn writer_reuses_existing_comment_with_marker() {
         .mount(&server)
         .await;
 
-    let report = RunReport::new(MARKER, Command::Plan, "u", ShowEmptyPlans::Table, "nikama");
+    let report = RunReport::new(
+        chrono_tz::UTC,
+        MARKER,
+        Command::Plan,
+        "u",
+        ShowEmptyPlans::Table,
+        "nikama",
+    );
     let (writer, task) = ReportWriter::start(github(&server), 5, report, CommentMode::Single);
     writer.finish().await;
     drop(writer);
@@ -268,7 +305,14 @@ async fn writer_finish_stops_task_while_clones_are_alive() {
         .mount(&server)
         .await;
 
-    let mut report = RunReport::new(MARKER, Command::Plan, "u", ShowEmptyPlans::Table, "nikama");
+    let mut report = RunReport::new(
+        chrono_tz::UTC,
+        MARKER,
+        Command::Plan,
+        "u",
+        ShowEmptyPlans::Table,
+        "nikama",
+    );
     report.row_mut("p");
     let (writer, task) = ReportWriter::start(github(&server), 5, report, CommentMode::Single);
     let held_clone = writer.clone();
@@ -310,7 +354,14 @@ async fn writer_per_project_mode_creates_one_comment_per_project() {
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
         .mount(&server)
         .await;
-    let mut report = RunReport::new(MARKER, Command::Plan, "u", ShowEmptyPlans::Table, "nikama");
+    let mut report = RunReport::new(
+        chrono_tz::UTC,
+        MARKER,
+        Command::Plan,
+        "u",
+        ShowEmptyPlans::Table,
+        "nikama",
+    );
     report.row_mut("a");
     report.row_mut("b");
     let (writer, task) = ReportWriter::start(github(&server), 5, report, CommentMode::PerProject);
@@ -411,6 +462,7 @@ async fn writer_hides_only_fully_superseded_plans_after_publication() {
     ] {
         let server = MockServer::start().await;
         let mut old = RunReport::new(
+            chrono_tz::UTC,
             "<!-- nikama:run=10:attempt=1 -->",
             Command::Plan,
             "https://gh/o/r/actions/runs/10",
@@ -464,8 +516,14 @@ async fn writer_hides_only_fully_superseded_plans_after_publication() {
             } else {
                 json!({"data": {"minimizeComment": {"minimizedComment": {"isMinimized": true}}}})
             })).expect(if hide {1} else {0}).mount(&server).await;
-        let mut current =
-            RunReport::new(MARKER, Command::Plan, "u", ShowEmptyPlans::Hide, "nikama");
+        let mut current = RunReport::new(
+            chrono_tz::UTC,
+            MARKER,
+            Command::Plan,
+            "u",
+            ShowEmptyPlans::Hide,
+            "nikama",
+        );
         current.row_mut("p");
         if !matches!(scenario, "partial" | "per-project") {
             current.row_mut("q");

@@ -82,6 +82,13 @@ impl ProjectRow {
     }
 }
 
+fn format_started_at(started_at: chrono::DateTime<chrono::Utc>, timezone: chrono_tz::Tz) -> String {
+    started_at
+        .with_timezone(&timezone)
+        .format("%Y-%m-%d %H:%M %Z")
+        .to_string()
+}
+
 #[derive(Debug, Clone)]
 pub struct RunReport {
     pub marker: String,
@@ -98,6 +105,7 @@ pub struct RunReport {
 
 impl RunReport {
     pub fn new(
+        timezone: chrono_tz::Tz,
         marker: &str,
         command: Command,
         run_url: &str,
@@ -108,7 +116,7 @@ impl RunReport {
             marker: marker.to_string(),
             command,
             run_url: run_url.to_string(),
-            started_at: chrono::Utc::now().format("%Y-%m-%d %H:%M UTC").to_string(),
+            started_at: format_started_at(chrono::Utc::now(), timezone),
             rows: BTreeMap::new(),
             notes: Vec::new(),
             show_empty_plans,
@@ -388,6 +396,7 @@ mod tests {
 
     fn report() -> RunReport {
         let mut r = RunReport::new(
+            chrono_tz::UTC,
             "<!-- nikama:run=1:attempt=1 -->",
             Command::Plan,
             "https://github.com/o/r/actions/runs/1",
@@ -412,6 +421,50 @@ mod tests {
             n.detail = Some("No changes.".into());
         }
         r
+    }
+
+    #[test]
+    fn timestamps_use_configured_timezone() {
+        let utc = "2026-01-15T18:30:00Z"
+            .parse::<chrono::DateTime<chrono::Utc>>()
+            .unwrap();
+        assert_eq!(
+            format_started_at(utc, chrono_tz::UTC),
+            "2026-01-15 18:30 UTC"
+        );
+        assert_eq!(
+            format_started_at(utc, chrono_tz::Asia::Tokyo),
+            "2026-01-16 03:30 JST"
+        );
+        assert_eq!(
+            format_started_at(utc, chrono_tz::America::New_York),
+            "2026-01-15 13:30 EST"
+        );
+        let summer = "2026-07-15T18:30:00Z"
+            .parse::<chrono::DateTime<chrono::Utc>>()
+            .unwrap();
+        assert_eq!(
+            format_started_at(summer, chrono_tz::America::New_York),
+            "2026-07-15 14:30 EDT"
+        );
+    }
+
+    #[test]
+    fn local_timestamp_is_rendered_in_all_comment_modes() {
+        for command in [Command::Plan, Command::Apply, Command::Unlock] {
+            let mut r = RunReport::new(
+                chrono_tz::Asia::Tokyo,
+                "<!-- test -->",
+                command,
+                "u",
+                ShowEmptyPlans::Table,
+                "nikama",
+            );
+            assert!(r.started_at.ends_with(" JST"));
+            r.row_mut("app");
+            assert!(r.render()[0].contains(&r.started_at));
+            assert!(r.render_per_project()[0].1.contains(&r.started_at));
+        }
     }
 
     #[test]

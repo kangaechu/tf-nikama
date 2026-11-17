@@ -109,6 +109,7 @@
 | `drift_exclude_patterns` | `[]` | `dir` が一致するプロジェクトをドリフト検知から外します。 |
 | `concurrency.max_parallel` | `4` | 同時に実行する plan の数。 |
 | `concurrency.apply_parallelism` | `1` | 同じ依存レベル内で同時に実行する apply の数。 |
+| `timezone` | `UTC` | PR コメントの実行開始時刻に使う IANA タイムゾーン名（例: `Asia/Tokyo`）。夏時間にも対応。無効な名前はエラー。 |
 | `comment.mode` | `single` | `single`: 実行ごとに 1 件のコメント。`per_project`: プロジェクトごとに 1 件。`latest`: 1 件のコメントを毎回の実行で上書き。 |
 | `comment.show_empty_plans` | `table` | 変更のないプロジェクトの表示。`table` は行だけ、`hide` は行を消す、`details` は plan 出力も含める。 |
 | `comment.per_project_status` | `false` | 互換性のために受け付けますが、使われません。 |

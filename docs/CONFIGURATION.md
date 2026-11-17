@@ -10,6 +10,7 @@ For a flat list of every input, key and variable with its default, see
 
 - [Outdated plan comments](#outdated-plan-comments)
 - [Configuration file](#configuration-file)
+- [Time zone](#time-zone)
 - [How a run works](#how-a-run-works)
 - [Draft pull requests](#draft-pull-requests)
 - [PR locks](#pr-locks)
@@ -57,10 +58,25 @@ for a complete example.
 Top-level keys: `projects`, `workflows`, `generate_projects`,
 `dependency_configuration`, `traverse_to_nested_projects`, `auto_merge`,
 `auto_merge_strategy`, `pr_locks`, `allow_draft_prs`, `no_lock_label`,
-`wakeup_word`, `autoplan_modules`, `allowed_plan_args`,
+`wakeup_word`, `autoplan_modules`, `allowed_plan_args`, `timezone`,
 `drift_include_patterns`, `drift_exclude_patterns`, `concurrency`, `comment`,
 `allowed_providers` (plus `git_timeout` and `telemetry`, accepted for
 compatibility).
+
+## Time zone
+
+Set `timezone` to an IANA time zone name to display the start time of PR
+reports (plan, apply and other commands) in your local time:
+
+```yaml
+timezone: Asia/Tokyo
+```
+
+For example, `2026-01-15 18:30 UTC` is displayed as `2026-01-16 03:30 JST`.
+The default is `UTC`. Invalid names fail configuration validation. Daylight
+saving time is handled automatically for regions that use it. This applies
+to all comment modes (`single`, `per_project`, `latest`). Lock timestamps and
+Terraform / OpenTofu output are unchanged.
 
 ## How a run works
 

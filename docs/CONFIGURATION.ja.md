@@ -9,6 +9,7 @@
 
 - [古い plan コメントの折りたたみ](#古い-plan-コメントの折りたたみ)
 - [設定ファイル](#設定ファイル)
+- [タイムゾーン](#タイムゾーン)
 - [実行の流れ](#実行の流れ)
 - [ドラフトのプルリクエスト](#ドラフトのプルリクエスト)
 - [PR ロック](#pr-ロック)
@@ -56,9 +57,24 @@
 トップレベルキー: `projects`、`workflows`、`generate_projects`、
 `dependency_configuration`、`traverse_to_nested_projects`、`auto_merge`、
 `auto_merge_strategy`、`pr_locks`、`allow_draft_prs`、`no_lock_label`、
-`wakeup_word`、`autoplan_modules`、`allowed_plan_args`、
+`wakeup_word`、`autoplan_modules`、`allowed_plan_args`、`timezone`、
 `drift_include_patterns`、`drift_exclude_patterns`、`concurrency`、`comment`、
 `allowed_providers`（互換性のために `git_timeout` と `telemetry` も受け付けます）。
+
+## タイムゾーン
+
+`timezone` に IANA タイムゾーン名を指定すると、plan・apply などの PR コメントに
+表示する実行開始時刻を、指定した地域の時刻に変換できます。
+
+```yaml
+timezone: Asia/Tokyo
+```
+
+たとえば `2026-01-15 18:30 UTC` は `2026-01-16 03:30 JST` と表示されます。
+デフォルトは `UTC` です。無効な名前を指定すると設定の検証でエラーになります。
+夏時間のある地域では自動で切り替わります。すべてのコメントモード
+（`single`、`per_project`、`latest`）に適用されます。
+ロックに保存する時刻や Terraform / OpenTofu の出力は変わりません。
 
 ## 実行の流れ
 

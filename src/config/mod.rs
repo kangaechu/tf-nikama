@@ -359,6 +359,8 @@ impl Default for Workflow {
 
 #[derive(Debug, Clone)]
 pub struct Config {
+    /// Time zone used for timestamps in PR reports.
+    pub timezone: chrono_tz::Tz,
     pub projects: Vec<Project>,
     pub workflows: BTreeMap<String, Workflow>,
     pub dependency_mode: DependencyMode,

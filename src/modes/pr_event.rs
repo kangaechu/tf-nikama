@@ -121,6 +121,7 @@ pub async fn run(env: &Env, config: Arc<Config>, ctx: &GithubContext, github: Gi
         ),
     };
     let mut report = RunReport::new(
+        config.timezone,
         &marker,
         main_command,
         &ctx.run_url(),
