@@ -30,7 +30,7 @@
 |---|---|---|
 | `version` | アクションの ref | インストールするリリースタグ（例: `v0.8.0`）。リリースタグ以外の ref を指定すると cargo でソースからビルドします。 |
 | `mode` | `` | プルリクエストイベントでは空、`workflow_dispatch` では `manual`、スケジュール実行のドリフト検知では `drift-detection`。 |
-| `command` | `` | 手動モードのみ: `digger plan`、`digger apply`、`digger destroy`。 |
+| `command` | `` | 手動モードのみ: `nikama plan`、`nikama apply`、`nikama destroy`（`digger ...` も受け付けます）。 |
 | `project` | `` | 手動モードのみ: 実行するプロジェクト。 |
 | `github-token` | `${{ github.token }}` | すべての GitHub API 呼び出しに使うトークン。push できる人を制限したブランチにマージするには GitHub App または PAT のトークンを渡します。 |
 | `max-parallel` | `` | 同時に実行する plan の最大数。`concurrency.max_parallel` より優先されます。 |
@@ -146,10 +146,10 @@
 | `plan.steps[]` | `[init, plan]` | plan ステージのステップ。後述。 |
 | `plan.filter_regex`、`apply.filter_regex` | なし | 正規表現。ステージ出力の一致箇所はログとコメントで `<REDACTED>` に置き換えられます。 |
 | `apply.steps[]` | `[init, apply]` | apply ステージのステップ。 |
-| `workflow_configuration.on_pull_request_pushed` | `[digger plan]` | push 時に実行するコマンド。コメントと同様に `destroy` は拒否されます。 |
-| `workflow_configuration.on_pull_request_closed` | `[digger unlock]` | クローズまたはマージ時に実行するコマンド。 |
-| `workflow_configuration.on_commit_to_default` | `[digger unlock]` | デフォルトブランチへのコミット時に実行するコマンド。 |
-| `workflow_configuration.on_pull_request_to_draft` | `[]` | プルリクエストがドラフトに変換されたときに実行するコマンド。`allow_draft_prs` が `false` の間は、空のリストは影響プロジェクトに対する `digger unlock` を意味します。 |
+| `workflow_configuration.on_pull_request_pushed` | `[nikama plan]` | push 時に実行するコマンド。コメントと同様に `destroy` は拒否されます。 |
+| `workflow_configuration.on_pull_request_closed` | `[nikama unlock]` | クローズまたはマージ時に実行するコマンド。 |
+| `workflow_configuration.on_commit_to_default` | `[nikama unlock]` | デフォルトブランチへのコミット時に実行するコマンド。 |
+| `workflow_configuration.on_pull_request_to_draft` | `[]` | プルリクエストがドラフトに変換されたときに実行するコマンド。`allow_draft_prs` が `false` の間は、空のリストは影響プロジェクトに対する `nikama unlock` を意味します。 |
 | `workflow_configuration.skip_merge_check` | `false` | このワークフローでは `mergeable` 条件を省略します。 |
 
 ステップは次のいずれかの形で書きます:

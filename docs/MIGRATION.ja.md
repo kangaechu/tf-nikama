@@ -67,7 +67,8 @@ nikama --validate --local
 
 - **`workflow_configuration` はデフォルトで補完されます。** Digger ではこの
   ブロックを書くと 3 つの `on_*` キーすべてが必須でした。tf-nikama は欠けている
-  キーをデフォルト（`digger plan` / `digger unlock` / `digger unlock`）で補います。
+  キーをデフォルト（`nikama plan` / `nikama unlock` / `nikama unlock`）で補います。
+  `digger ...` と書かれた項目もそのまま動きます。
 - **設定ファイルがないとエラーになります。** Digger は空の設定で続行しましたが、
   tf-nikama は終了コード 1 で終了します。
 

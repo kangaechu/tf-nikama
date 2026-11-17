@@ -67,7 +67,8 @@ Two behavioural differences in the config are worth knowing:
 
 - **`workflow_configuration` is filled in with defaults.** In Digger, writing
   the block made all three `on_*` keys mandatory. tf-nikama completes missing
-  keys with the defaults (`digger plan` / `digger unlock` / `digger unlock`).
+  keys with the defaults (`nikama plan` / `nikama unlock` / `nikama unlock`;
+  `digger ...` entries keep working).
 - **A missing config file is an error.** Digger continued with an empty
   configuration; tf-nikama exits with code 1.
 

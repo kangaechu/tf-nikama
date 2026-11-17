@@ -12,7 +12,7 @@ inputs:
     required: false
     default: ""
   command:
-    description: "Manual mode only: `digger plan`, `digger apply` or `digger destroy`"
+    description: "Manual mode only: `nikama plan`, `nikama apply` or `nikama destroy` (`digger ...` is accepted as well)"
     required: false
     default: ""
   project:

@@ -81,8 +81,8 @@ Terraform / OpenTofu output are unchanged.
 ## How a run works
 
 1. The event is mapped to commands using each project's
-   `workflow_configuration` (defaults: push → `digger plan`, close / merge →
-   `digger unlock`). Draft pull requests run nothing by default (see "Draft
+   `workflow_configuration` (defaults: push → `nikama plan`, close / merge →
+   `nikama unlock`). Draft pull requests run nothing by default (see "Draft
    pull requests").
 2. Impacted projects are computed from the PR's changed files (`dir/**`,
    `include_patterns`, `exclude_patterns`, plus downstream `depends_on`
@@ -132,7 +132,7 @@ Terraform / OpenTofu output are unchanged.
 With `allow_draft_prs: false` (the default) a draft pull request runs nothing
 and takes no locks: pushes to it are ignored, converting an open pull request
 to a draft releases its locks (`converted_to_draft`), and comment commands
-other than `digger unlock` are refused until it is marked ready for review.
+other than `nikama unlock` are refused until it is marked ready for review.
 
 ```yaml
 allow_draft_prs: false
@@ -144,12 +144,12 @@ PR locks are checked for all projects up front and taken in configuration
 order. If any project is held by another open PR, no new lock is taken: the
 held projects are reported as *locked by #N*, the others as skipped, and only
 projects this PR already holds still run. On close / merge and on a bare
-`digger unlock`, every lock the PR still holds is released, not only those of
+`nikama unlock`, every lock the PR still holds is released, not only those of
 the currently impacted projects. A lock held by a different open pull request
 is never released this way; a lock left behind by a closed pull request is
-taken over by the next PR that needs the project. `digger lock` takes the
+taken over by the next PR that needs the project. `nikama lock` takes the
 locks of the impacted (or `-p` / `-d` selected) projects without planning;
-`digger unlock -p <project>` releases only that project's lock.
+`nikama unlock -p <project>` releases only that project's lock.
 
 `pr_locks` decides when a lock is taken:
 
@@ -168,13 +168,13 @@ locks of the impacted (or `-p` / `-d` selected) projects without planning;
 pr_locks: on_apply
 ```
 
-A plan can skip locking altogether: `digger plan --no-lock` on a comment, or
+A plan can skip locking altogether: `nikama plan --no-lock` on a comment, or
 a pull request carrying the label named in `no_lock_label` (set it to the
 label your Renovate / Dependabot configuration adds). Such a plan runs even
 for projects held by another PR and releases any lock this PR holds for the
 planned projects, so a pull request that only needs a look at its plan, for
 example a Terraform or provider version bump across every directory, blocks
-nobody. `digger apply` takes the locks as usual; a stored plan is still bound
+nobody. `nikama apply` takes the locks as usual; a stored plan is still bound
 to the commit it was produced from.
 
 ```yaml

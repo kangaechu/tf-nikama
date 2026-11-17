@@ -31,7 +31,7 @@ All inputs of `kangaechu/tf-nikama` are optional.
 |---|---|---|
 | `version` | the action ref | Release tag to install (for example `v0.8.0`). A non-release ref builds from source with cargo. |
 | `mode` | `` | Empty for pull request events, `manual` for `workflow_dispatch`, `drift-detection` for scheduled drift runs. |
-| `command` | `` | Manual mode only: `digger plan`, `digger apply` or `digger destroy`. |
+| `command` | `` | Manual mode only: `nikama plan`, `nikama apply` or `nikama destroy` (`digger ...` is accepted as well). |
 | `project` | `` | Manual mode only: the project to run. |
 | `github-token` | `${{ github.token }}` | Token for every GitHub API call. Pass a GitHub App or PAT token to merge onto a branch that restricts who can push. |
 | `max-parallel` | `` | Maximum number of concurrent plans; overrides `concurrency.max_parallel`. |
@@ -147,10 +147,10 @@ A workflow may be `null` to use the built-in steps (`plan` = `init`, `plan`;
 | `plan.steps[]` | `[init, plan]` | Steps of the plan stage; see below. |
 | `plan.filter_regex`, `apply.filter_regex` | none | Regular expression; matches in the stage output are replaced with `<REDACTED>` in logs and the comment. |
 | `apply.steps[]` | `[init, apply]` | Steps of the apply stage. |
-| `workflow_configuration.on_pull_request_pushed` | `[digger plan]` | Commands run on push. `destroy` is refused here, as it is in comments. |
-| `workflow_configuration.on_pull_request_closed` | `[digger unlock]` | Commands run on close or merge. |
-| `workflow_configuration.on_commit_to_default` | `[digger unlock]` | Commands run on a commit to the default branch. |
-| `workflow_configuration.on_pull_request_to_draft` | `[]` | Commands run when a pull request is converted to a draft. While `allow_draft_prs` is `false`, an empty list means `digger unlock` for the impacted projects. |
+| `workflow_configuration.on_pull_request_pushed` | `[nikama plan]` | Commands run on push. `destroy` is refused here, as it is in comments. |
+| `workflow_configuration.on_pull_request_closed` | `[nikama unlock]` | Commands run on close or merge. |
+| `workflow_configuration.on_commit_to_default` | `[nikama unlock]` | Commands run on a commit to the default branch. |
+| `workflow_configuration.on_pull_request_to_draft` | `[]` | Commands run when a pull request is converted to a draft. While `allow_draft_prs` is `false`, an empty list means `nikama unlock` for the impacted projects. |
 | `workflow_configuration.skip_merge_check` | `false` | Skip the `mergeable` requirement for this workflow. |
 
 A step is one of:

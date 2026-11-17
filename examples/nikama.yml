@@ -18,7 +18,7 @@ projects:
     # Regular expression matched against the pull request's base branch;
     # the project is impacted only by PRs into a matching branch.
     branch: ^develop$
-    # Checks run before `digger apply` (default: [mergeable]). Each value is
+    # Checks run before `nikama apply` (default: [mergeable]). Each value is
     # enforced independently:
     #   mergeable  - GitHub reports the PR as mergeable (no conflicts, required
     #                checks green); skipped by workflow_configuration.skip_merge_check
@@ -61,9 +61,9 @@ workflows:
         - init
         - apply
     workflow_configuration:
-      on_pull_request_pushed: ["digger plan"]
-      on_pull_request_closed: ["digger unlock"]
-      on_commit_to_default: ["digger unlock"]
+      on_pull_request_pushed: ["nikama plan"]   # `digger plan` works too
+      on_pull_request_closed: ["nikama unlock"]
+      on_commit_to_default: ["nikama unlock"]
 
 # When project locks are taken: on_plan (default; true) locks on the first
 # plan, on_apply only on apply (plans never block other PRs), disabled

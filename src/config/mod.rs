@@ -354,9 +354,9 @@ pub struct WorkflowConfiguration {
 impl Default for WorkflowConfiguration {
     fn default() -> Self {
         Self {
-            on_pull_request_pushed: vec!["digger plan".to_string()],
-            on_pull_request_closed: vec!["digger unlock".to_string()],
-            on_commit_to_default: vec!["digger unlock".to_string()],
+            on_pull_request_pushed: vec!["nikama plan".to_string()],
+            on_pull_request_closed: vec!["nikama unlock".to_string()],
+            on_commit_to_default: vec!["nikama unlock".to_string()],
             on_pull_request_to_draft: vec![],
             skip_merge_check: false,
         }

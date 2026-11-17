@@ -75,7 +75,7 @@ pub fn jobs_for_pull_request(
             PrSelector::CommitToDefault => cfg.on_commit_to_default.clone(),
             PrSelector::ConvertedToDraft => {
                 if cfg.on_pull_request_to_draft.is_empty() && !config.allow_draft_prs {
-                    vec!["digger unlock".to_string()]
+                    vec!["nikama unlock".to_string()]
                 } else {
                     cfg.on_pull_request_to_draft.clone()
                 }

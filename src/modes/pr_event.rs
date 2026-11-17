@@ -22,7 +22,7 @@ pub(super) struct Trigger {
     pub(super) notes: Vec<String>,
     pub(super) comment_id: Option<u64>,
     /// Release every lock this PR holds, not only those of impacted projects
-    /// (PR closed / merged, or a bare `digger unlock`).
+    /// (PR closed / merged, or a bare `nikama unlock`).
     pub(super) release_all_locks: bool,
     /// Head commit of the PR at the time of the event.
     pub(super) head_sha: String,
@@ -683,7 +683,7 @@ pub(super) async fn build_trigger(
                     }
                 ));
             }
-            // A bare `digger unlock` releases everything this PR holds; with
+            // A bare `nikama unlock` releases everything this PR holds; with
             // `-p` / `-d` only the selected projects are touched.
             let release_all_locks =
                 command == Command::Unlock && cmd.projects.is_empty() && cmd.dirs.is_empty();

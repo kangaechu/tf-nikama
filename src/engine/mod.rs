@@ -33,8 +33,8 @@ impl Command {
 
     /// Like [`Command::parse`], additionally accepting the configured wakeup
     /// words as prefix. The default words stay accepted so that
-    /// `workflow_configuration` defaults (`digger plan`, ...) keep working
-    /// whatever `wakeup_word` says.
+    /// `workflow_configuration` defaults (`nikama plan`, ...) and Digger-era
+    /// entries (`digger plan`) keep working whatever `wakeup_word` says.
     pub fn parse_with(s: &str, wakeup_words: &[String]) -> Option<Command> {
         let s = s.trim().to_ascii_lowercase();
         let s = crate::config::DEFAULT_WAKEUP_WORDS
