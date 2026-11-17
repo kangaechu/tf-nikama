@@ -139,6 +139,17 @@ impl RunReport {
             "### nikama {} · run [#{}]({}) · {}{}{}\n\n",
             self.command, run_id, self.run_url, self.started_at, state, suffix
         ));
+        // Record every project, including empty plans omitted from the table.
+        // Each split part carries the full scope so it cannot be hidden while
+        // another project from the same report is still current.
+        let metadata = serde_json::json!({
+            "command": self.command.to_string(),
+            "projects": self.rows.keys().collect::<Vec<_>>(),
+        })
+        .to_string()
+        .replace('<', "\\u003c")
+        .replace('>', "\\u003e");
+        s.push_str(&format!("<!-- nikama:scope {} -->\n\n", metadata));
         s
     }
 

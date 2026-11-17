@@ -1,4 +1,4 @@
-//! Minimal GitHub REST client (reqwest) with retry.
+//! Minimal GitHub REST and GraphQL client (reqwest) with retry.
 
 use reqwest::{Method, StatusCode};
 use serde::Deserialize;
@@ -37,9 +37,18 @@ pub struct GithubClient {
 pub struct CommentInfo {
     pub id: u64,
     #[serde(default)]
+    pub node_id: String,
+    #[serde(default)]
+    pub user: Option<CommentAuthor>,
+    #[serde(default)]
     pub body: Option<String>,
     #[serde(default)]
     pub html_url: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CommentAuthor {
+    pub id: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -433,6 +442,24 @@ impl GithubClient {
             Some(json!({ "body": body })),
         )
         .await?;
+        Ok(())
+    }
+
+    /// Collapse a superseded plan comment while keeping its history.
+    pub async fn minimize_outdated_comment(&self, node_id: &str) -> Result<()> {
+        let data = self
+            .graphql(
+                r#"mutation($id: ID!) {
+                minimizeComment(input: {subjectId: $id, classifier: OUTDATED}) {
+                    minimizedComment { isMinimized }
+                }
+            }"#,
+                json!({"id": node_id}),
+            )
+            .await?;
+        if data["minimizeComment"]["minimizedComment"]["isMinimized"] != true {
+            return Err(GithubError::GraphQl("comment was not minimized".into()));
+        }
         Ok(())
     }
 

@@ -1,8 +1,9 @@
 //! Single-writer task that upserts the run comment(s) with debouncing.
 
-use super::comment::RunReport;
+use super::comment::{RowStatus, RunReport};
 use crate::config::CommentMode;
-use crate::github::GithubClient;
+use crate::engine::Command;
+use crate::github::{client::CommentInfo, GithubClient};
 use std::collections::HashMap;
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
@@ -87,6 +88,8 @@ struct Publisher {
     /// Last body published per key, to skip no-op edits.
     last: HashMap<String, String>,
     listed: bool,
+    previous: Vec<CommentInfo>,
+    author_id: Option<u64>,
 }
 
 impl Publisher {
@@ -103,9 +106,12 @@ impl Publisher {
                     let Some(first) = body.lines().next() else {
                         continue;
                     };
-                    if !first.starts_with(&marker_prefix) {
+                    if first != report.marker && !first.starts_with(&format!("{} ", marker_prefix))
+                    {
+                        self.previous.push(c);
                         continue;
                     }
+                    self.author_id = c.user.as_ref().map(|u| u.id);
                     let key = part_key(first);
                     self.ids.insert(key, c.id);
                 }
@@ -125,6 +131,7 @@ impl Publisher {
                 .collect(),
             CommentMode::PerProject => report.render_per_project(),
         };
+        let mut published = true;
         for (key, body) in bodies {
             if self.last.get(&key) == Some(&body) {
                 continue;
@@ -135,7 +142,10 @@ impl Publisher {
                     .github
                     .create_comment(self.pr_number, &body)
                     .await
-                    .map(|c| Some(c.id)),
+                    .map(|c| {
+                        self.author_id = c.user.as_ref().map(|u| u.id);
+                        Some(c.id)
+                    }),
             };
             match result {
                 Ok(Some(id)) => {
@@ -145,10 +155,81 @@ impl Publisher {
                 Ok(None) => {
                     self.last.insert(key, body);
                 }
-                Err(e) => tracing::error!(error = %e, "failed to publish PR comment"),
+                Err(e) => {
+                    published = false;
+                    tracing::error!(error = %e, "failed to publish PR comment");
+                }
+            }
+        }
+        if published
+            && report.finished
+            && report.command == Command::Plan
+            && self.mode != CommentMode::Latest
+        {
+            self.hide_superseded(report).await;
+        }
+    }
+
+    async fn hide_superseded(&mut self, report: &RunReport) {
+        let Some(author) = self.author_id else { return };
+        let Some(first_id) = self.ids.values().min().copied() else {
+            return;
+        };
+        for c in &self.previous {
+            if c.id >= first_id
+                || c.node_id.is_empty()
+                || c.user.as_ref().map(|u| u.id) != Some(author)
+                || !superseded(c.body.as_deref().unwrap_or(""), report)
+            {
+                continue;
+            }
+            if let Err(e) = self.github.minimize_outdated_comment(&c.node_id).await {
+                // Reporting housekeeping must never fail Terraform work.
+                tracing::warn!(comment_id = c.id, error = %e, "could not hide outdated plan comment");
             }
         }
     }
+}
+
+/// Only machine-readable nikama plan reports with fully replaced scopes
+/// qualify. Older reports without scope metadata are retained conservatively.
+fn superseded(body: &str, report: &RunReport) -> bool {
+    let mut lines = body.lines();
+    let Some(marker) = lines.next() else {
+        return false;
+    };
+    if !(marker.starts_with("<!-- nikama:run=") || marker == "<!-- nikama:latest -->") {
+        return false;
+    }
+    let Some(header) = lines.next() else {
+        return false;
+    };
+    if !header.starts_with("### nikama plan · run ") || header.contains(" · running") {
+        return false;
+    }
+    let Some(scope) = lines
+        .find(|line| !line.is_empty())
+        .and_then(|line| line.strip_prefix("<!-- nikama:scope "))
+        .and_then(|s| s.strip_suffix(" -->"))
+    else {
+        return false;
+    };
+    #[derive(serde::Deserialize)]
+    struct Scope {
+        command: String,
+        projects: Vec<String>,
+    }
+    let Ok(scope) = serde_json::from_str::<Scope>(scope) else {
+        return false;
+    };
+    scope.command == "plan"
+        && !scope.projects.is_empty()
+        && scope.projects.iter().all(|name| {
+            report
+                .rows
+                .get(name)
+                .is_some_and(|row| matches!(row.status, RowStatus::Changes | RowStatus::NoChanges))
+        })
 }
 
 /// Extract a part key from a marker line: `... part=2 -->` → "2",
@@ -179,6 +260,8 @@ async fn run(
         ids: HashMap::new(),
         last: HashMap::new(),
         listed: false,
+        previous: Vec::new(),
+        author_id: None,
     };
     publisher.publish(&report).await;
     let mut dirty = false;

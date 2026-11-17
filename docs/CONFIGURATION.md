@@ -8,6 +8,7 @@ variables and exit codes of the binary.
 For a flat list of every input, key and variable with its default, see
 [PARAMETERS.md](PARAMETERS.md).
 
+- [Outdated plan comments](#outdated-plan-comments)
 - [Configuration file](#configuration-file)
 - [How a run works](#how-a-run-works)
 - [Draft pull requests](#draft-pull-requests)
@@ -26,6 +27,25 @@ For a flat list of every input, key and variable with its default, see
 - [Environment variables](#environment-variables)
 - [Validating locally](#validating-locally)
 - [Exit codes](#exit-codes)
+
+## Outdated plan comments
+
+In `comment.mode: single` (the default) and `per_project`, a completed plan
+run collapses older plan comments as **outdated** after publishing its final
+report. Every project recorded in an older comment must have a successful
+replacement plan (`changes` or `no changes`) in the new run. A partial re-plan
+keeps comments that still contain results for other projects. Split comments
+are treated as one report scope; per-project comments can be hidden independently.
+
+Only older, completed nikama plan comments by the same GitHub account are
+eligible. Apply comments and running reports stay visible. `latest` continues
+to update its existing comment in place. Comments produced before scope
+metadata was introduced stay visible because their full project scope cannot
+be verified (empty plans may have been omitted from the table).
+
+Collapsing uses GitHub GraphQL `minimizeComment` with `OUTDATED`; comments
+remain available to expand. If the token cannot minimize a comment, nikama
+logs a warning and leaves the Terraform result unchanged.
 
 ## Configuration file
 
