@@ -28,7 +28,7 @@
 
 | 入力 | デフォルト | 説明 |
 |---|---|---|
-| `version` | アクションの ref | インストールするリリースタグ（例: `v0.7.0`）。リリースタグ以外の ref を指定すると cargo でソースからビルドします。 |
+| `version` | アクションの ref | インストールするリリースタグ（例: `v0.8.0`）。リリースタグ以外の ref を指定すると cargo でソースからビルドします。 |
 | `mode` | `` | プルリクエストイベントでは空、`workflow_dispatch` では `manual`、スケジュール実行のドリフト検知では `drift-detection`。 |
 | `command` | `` | 手動モードのみ: `digger plan`、`digger apply`、`digger destroy`。 |
 | `project` | `` | 手動モードのみ: 実行するプロジェクト。 |

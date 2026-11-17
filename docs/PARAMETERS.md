@@ -29,7 +29,7 @@ All inputs of `kangaechu/tf-nikama` are optional.
 
 | Input | Default | Description |
 |---|---|---|
-| `version` | the action ref | Release tag to install (for example `v0.7.0`). A non-release ref builds from source with cargo. |
+| `version` | the action ref | Release tag to install (for example `v0.8.0`). A non-release ref builds from source with cargo. |
 | `mode` | `` | Empty for pull request events, `manual` for `workflow_dispatch`, `drift-detection` for scheduled drift runs. |
 | `command` | `` | Manual mode only: `digger plan`, `digger apply` or `digger destroy`. |
 | `project` | `` | Manual mode only: the project to run. |

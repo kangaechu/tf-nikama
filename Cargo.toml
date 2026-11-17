@@ -1,6 +1,6 @@
 [package]
 name = "nikama"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2021"
 rust-version = "1.91"
 description = "Backendless Terraform/OpenTofu PR automation for GitHub Actions (a Rust re-implementation of Digger's backendless mode)"

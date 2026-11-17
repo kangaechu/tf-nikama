@@ -150,7 +150,7 @@ jobs:
         with:
           role-to-assume: arn:aws:iam::123456789012:role/digger
           aws-region: ap-northeast-1
-      - uses: kangaechu/tf-nikama@v0.7.0
+      - uses: kangaechu/tf-nikama@v0.8.0
         with:
           upload-plan-destination: aws
           upload-plan-destination-s3-bucket: my-plan-bucket
@@ -224,7 +224,7 @@ What changed and why:
 above and keep the rest:
 
 ```yaml
-      - uses: kangaechu/tf-nikama@v0.7.0
+      - uses: kangaechu/tf-nikama@v0.8.0
         with:
           mode: manual
           command: digger apply
@@ -232,7 +232,7 @@ above and keep the rest:
 ```
 
 ```yaml
-      - uses: kangaechu/tf-nikama@v0.7.0
+      - uses: kangaechu/tf-nikama@v0.8.0
         with:
           mode: drift-detection
           drift-detection-slack-notification-url: ${{ secrets.SLACK_WEBHOOK }}
