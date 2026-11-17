@@ -127,6 +127,27 @@ pub enum CommentMode {
     Latest,
 }
 
+impl CommentMode {
+    /// Digger's `reporting-strategy` names (`REPORTING_STRATEGY`):
+    /// `comments_per_run`, `per_project`, `latest_run_comment`.
+    pub fn from_reporting_strategy(s: &str) -> Option<CommentMode> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "comments_per_run" => Some(CommentMode::Single),
+            "per_project" => Some(CommentMode::PerProject),
+            "latest_run_comment" => Some(CommentMode::Latest),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            CommentMode::Single => "single",
+            CommentMode::PerProject => "per_project",
+            CommentMode::Latest => "latest",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShowEmptyPlans {
     Table,
@@ -152,6 +173,9 @@ impl Default for Concurrency {
 #[derive(Debug, Clone)]
 pub struct CommentConfig {
     pub mode: CommentMode,
+    /// `comment.mode` was written in `nikama.yml` (as opposed to defaulted),
+    /// so the `REPORTING_STRATEGY` environment variable must not override it.
+    pub mode_explicit: bool,
     pub show_empty_plans: ShowEmptyPlans,
     pub per_project_status: bool,
 }
@@ -160,6 +184,7 @@ impl Default for CommentConfig {
     fn default() -> Self {
         Self {
             mode: CommentMode::Single,
+            mode_explicit: false,
             show_empty_plans: ShowEmptyPlans::Table,
             per_project_status: false,
         }

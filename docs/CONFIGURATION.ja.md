@@ -144,7 +144,9 @@ PR ロックは全プロジェクト分を事前に確認し、設定順に取�
 引数なしの `digger unlock` では、現在影響を受けるプロジェクトだけでなく、PR が
 保持しているすべてのロックが解放されます。別のオープンな PR が保持している
 ロックがこの経路で解放されることはありません。クローズされた PR が残したロックは、
-そのプロジェクトを必要とする次の PR が引き継ぎます。
+そのプロジェクトを必要とする次の PR が引き継ぎます。`digger lock` は plan せずに
+影響を受ける（または `-p` / `-d` で選んだ）プロジェクトのロックを取得し、
+`digger unlock -p <project>` はそのプロジェクトのロックだけを解放します。
 
 ロックを取得するタイミングは `pr_locks` で決まります:
 
@@ -524,7 +526,7 @@ README のクイックスタートの `if:` ガードは、リポジトリ外か
 | `INPUT_DIGGER_COMMAND`、`INPUT_DIGGER_PROJECT` | 手動モード |
 | `LOCK_PROVIDER`（`aws`/`s3`/`gcp`/`noop`）、`NIKAMA_LOCK_TABLE`、`AWS_S3_LOCK_BUCKET`、`GOOGLE_STORAGE_LOCK_BUCKET`、`DISABLE_LOCKING` | PR ロック |
 | `PLAN_UPLOAD_DESTINATION`（`aws`/`gcp`）、`AWS_S3_BUCKET`、`PLAN_UPLOAD_S3_*`、`GOOGLE_STORAGE_PLAN_ARTEFACT_BUCKET` | plan 保存 |
-| `REPORTING_STRATEGY` | `comments_per_run` / `latest_run_comment` / `per_project` |
+| `REPORTING_STRATEGY` | `comments_per_run` / `latest_run_comment` / `per_project`。`comment.mode` の Digger 名で、`nikama.yml` に `comment.mode` があればそちらが優先 |
 | `INPUT_DRIFT_DETECTION_SLACK_NOTIFICATION_URL`、`INPUT_DRIFT_GITHUB_ISSUES` | ドリフト通知 |
 | `NIKAMA_CONFIG`、`NIKAMA_MAX_PARALLEL`、`NIKAMA_LOG_LEVEL` | CLI オプション |
 | `NIKAMA_CONFIG_REF`、`NIKAMA_ALLOW_RUN_STEPS` | 信頼された設定（「設定の信頼」参照） |

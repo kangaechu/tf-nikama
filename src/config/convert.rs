@@ -81,6 +81,7 @@ pub(super) fn convert(raw: RawConfig, dir: &Path) -> Result<Config, ConfigError>
     let comment = {
         let c = raw.comment.unwrap_or_default();
         CommentConfig {
+            mode_explicit: c.mode.is_some(),
             mode: match c.mode.as_deref().unwrap_or("single") {
                 "single" => CommentMode::Single,
                 "per_project" => CommentMode::PerProject,

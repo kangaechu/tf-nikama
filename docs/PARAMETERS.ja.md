@@ -69,7 +69,7 @@
 
 | 入力 | デフォルト | 説明 |
 |---|---|---|
-| `reporting-strategy` | `comments_per_run` | `comments_per_run`（実行ごとに 1 件のコメントをその場で編集）、`latest_run_comment`、`per_project`。 |
+| `reporting-strategy` | `comments_per_run` | `comment.mode` の Digger 名。`comments_per_run`（`single`: 実行ごとに 1 件のコメントをその場で編集）、`per_project`、`latest_run_comment`（`latest`）。`nikama.yml` に `comment.mode` が書かれていればそちらが優先されます。 |
 | `drift-detection-slack-notification-url` | `` | ドリフト通知用の Slack incoming webhook。 |
 | `drift-github-issues` | `false` | ドリフトしたプロジェクトごとに GitHub Issue を作成・更新します（`issues: write` が必要）。 |
 | `block-filters` | `` | ドリフトモード: 対象にする `generate_projects` のブロック名（カンマ区切り）。 |
@@ -142,14 +142,14 @@
 | キー | デフォルト | 説明 |
 |---|---|---|
 | `env_vars.state[]` | `[]` | `init`（state バックエンド）用の環境変数。各要素は `name` と、`value` または `value_from`（ワークフローの環境変数名）。nikama 自身が設定する変数（`allowed-providers` 用の `TF_CLI_CONFIG_FILE`、`TF_DATA_DIR`）が同名の指定より優先されます。 |
-| `env_vars.commands[]` | `[]` | `plan` / `apply` / `run` ステップ用の環境変数。形式は同じ。 |
+| `env_vars.commands[]` | `[]` | `plan` / `apply` / `destroy` と `run:` ステップ用の環境変数。形式は同じ。nikama 自身が設定する変数（`TF_CLI_CONFIG_FILE`、`TF_DATA_DIR`、`run:` ステップでは[「`run:` ステップで使える変数」](#run-ステップで使える変数)の変数）が同名の指定より優先されます。 |
 | `plan.steps[]` | `[init, plan]` | plan ステージのステップ。後述。 |
 | `plan.filter_regex`、`apply.filter_regex` | なし | 正規表現。ステージ出力の一致箇所はログとコメントで `<REDACTED>` に置き換えられます。 |
 | `apply.steps[]` | `[init, apply]` | apply ステージのステップ。 |
 | `workflow_configuration.on_pull_request_pushed` | `[digger plan]` | push 時に実行するコマンド。コメントと同様に `destroy` は拒否されます。 |
 | `workflow_configuration.on_pull_request_closed` | `[digger unlock]` | クローズまたはマージ時に実行するコマンド。 |
 | `workflow_configuration.on_commit_to_default` | `[digger unlock]` | デフォルトブランチへのコミット時に実行するコマンド。 |
-| `workflow_configuration.on_pull_request_to_draft` | `[]` | プルリクエストがドラフトに変換されたときに実行するコマンド。 |
+| `workflow_configuration.on_pull_request_to_draft` | `[]` | プルリクエストがドラフトに変換されたときに実行するコマンド。`allow_draft_prs` が `false` の間は、空のリストは影響プロジェクトに対する `digger unlock` を意味します。 |
 | `workflow_configuration.skip_merge_check` | `false` | このワークフローでは `mergeable` 条件を省略します。 |
 
 ステップは次のいずれかの形で書きます:
@@ -164,8 +164,10 @@
   shell: bash                       # optional
 ```
 
-`init`、`plan`、`apply` は `extra_args` を受け付けます。plan ステージは `init` で
-始まる必要があります。`allow-run-steps` が `false` のとき `run:` ステップは拒否されます。
+`init`、`plan`、`apply` は `extra_args` を受け付けます。`aws_role_to_assume` を持つ
+（かつ `aws_cognito_oidc` のない）プロジェクトでは、state 用の認証情報を注入するため、
+ワークフローの plan と apply の両ステージが `init` で始まる必要があります。
+`allow-run-steps` が `false` のとき `run:` ステップは拒否されます。
 
 ### `generate_projects`
 
@@ -179,7 +181,7 @@
 | `exclude` | なし | ディレクトリが一致してはいけない glob。 |
 | `blocks[]` | `[]` | 名前付きのグループ。各要素は下記のキーを持ちます。 |
 | `aws_role_to_assume`、`aws_cognito_oidc` | なし | 生成されるすべてのプロジェクトに適用されます。 |
-| `drift_include_patterns`、`drift_exclude_patterns` | `[]` | 生成されるプロジェクトのドリフトフィルタ。 |
+| `drift_include_patterns`、`drift_exclude_patterns` | `[]` | トップレベルのドリフトフィルタに追加されるため、生成されたプロジェクトだけでなくすべてのプロジェクトに適用されます。 |
 
 `blocks[]`:
 
@@ -271,7 +273,7 @@ STS の代わりに Cognito ID プールから取得する認証情報。
 | `AWS_S3_BUCKET` | S3 の plan バケット。 |
 | `PLAN_UPLOAD_S3_ENCRYPTION_ENABLED`、`PLAN_UPLOAD_S3_ENCRYPTION_TYPE`、`PLAN_UPLOAD_S3_ENCRYPTION_KMS_ID` | S3 の plan 暗号化。 |
 | `GOOGLE_STORAGE_PLAN_ARTEFACT_BUCKET` | Cloud Storage の plan バケット。 |
-| `REPORTING_STRATEGY` | `comments_per_run`、`latest_run_comment`、`per_project`。 |
+| `REPORTING_STRATEGY` | `comments_per_run`、`latest_run_comment`、`per_project`。`nikama.yml` に `comment.mode` が書かれていなければ、これが `comment.mode` になります（`reporting-strategy` 参照）。 |
 | `NIKAMA_DRIFT_SLACK_WEBHOOK_URL`、`INPUT_DRIFT_DETECTION_SLACK_NOTIFICATION_URL` | ドリフト通知の Slack webhook。 |
 | `NIKAMA_DRIFT_GITHUB_ISSUES`、`INPUT_DRIFT_GITHUB_ISSUES` | ドリフト通知を GitHub Issue にする。どちらかが `true` なら有効。 |
 | `TF_PLUGIN_CACHE_DIR` | 設定されていると `init` ステップを 1 つずつ実行。 |
@@ -286,9 +288,12 @@ STS の代わりに Cognito ID プールから取得する認証情報。
 | 変数 | 説明 |
 |---|---|
 | `PROJECT_NAME` | 実行中のプロジェクト名。 |
+| `PROJECT_DIR` | その `dir`（リポジトリルートからの相対パス）。 |
+| `PR_BRANCH`、`DEFAULT_BRANCH` | プルリクエストの head ブランチとリポジトリのデフォルトブランチ（手動・ドリフト実行では空）。 |
 | `NIKAMA_OUT`、`DIGGER_OUT` | この内容が PR コメントのプロジェクト行に追記されるファイル。 |
 | `NIKAMA_PLANFILE`、`DIGGER_PLANFILE` | `plan` ステップ後の plan ファイルのパス。 |
-| `TF_DATA_DIR` | nikama が設定するプロジェクトごとの Terraform データディレクトリ。 |
+| `TF_DATA_DIR` | プロジェクトごとの Terraform データディレクトリ。複数のプロジェクトがディレクトリを共有するときに設定されます。 |
+| `TF_CLI_CONFIG_FILE` | `allowed-providers` を強制する CLI 設定。設定しているときのみ。 |
 | `TF_IN_AUTOMATION` | 常に `true`。 |
 
-`env_vars.commands` の要素とワークフロー自身の環境変数もそのまま渡されます。
+`env_vars.commands` の要素とワークフロー自身の環境変数もそのまま渡されます。上記の変数は同名の指定より優先されます。

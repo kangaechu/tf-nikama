@@ -160,7 +160,8 @@ pub fn help_text(wakeup_words: &[String]) -> String {
 | `{w} apply` | Apply all impacted projects (PR must be mergeable) |
 | `{w} apply -p <project>` | Apply selected project(s) |
 | `{w} apply -p <project> -- -target=<addr>` | Without plan storage only: plan with these arguments immediately before applying |
-| `{w} lock` / `{w} unlock` | Acquire / release the PR-level lock for impacted projects |
+| `{w} lock` | Take the project locks for this PR without planning (`-p` / `-d` select projects) |
+| `{w} unlock` | Release every lock this PR holds; with `-p` / `-d` only the selected projects |
 | `{w} help` | Show this message |"
     );
     let others: Vec<String> = wakeup_words

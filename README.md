@@ -69,6 +69,7 @@ done:
 | `nikama plan --no-lock` | Plan without taking locks, for a look at the plan |
 | `nikama plan -p app -- -target=module.vpc` | Pass allowlisted arguments to `terraform plan` |
 | `nikama apply` / `nikama apply -p app` | Apply every impacted project, or one |
+| `nikama lock` | Take the locks for the impacted projects without planning |
 | `nikama unlock` | Release every lock this PR holds |
 | `nikama help` | Show the command list |
 

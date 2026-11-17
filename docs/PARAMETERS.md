@@ -70,7 +70,7 @@ All inputs of `kangaechu/tf-nikama` are optional.
 
 | Input | Default | Description |
 |---|---|---|
-| `reporting-strategy` | `comments_per_run` | `comments_per_run` (one comment per run, edited in place), `latest_run_comment` or `per_project`. |
+| `reporting-strategy` | `comments_per_run` | Digger's name for `comment.mode`: `comments_per_run` (`single`, one comment per run, edited in place), `per_project` or `latest_run_comment` (`latest`). A `comment.mode` written in `nikama.yml` wins. |
 | `drift-detection-slack-notification-url` | `` | Slack incoming webhook for drift notifications. |
 | `drift-github-issues` | `false` | Create or update one GitHub Issue per drifted project (needs `issues: write`). |
 | `block-filters` | `` | Drift mode: comma-separated `generate_projects` block names to include. |
@@ -143,14 +143,14 @@ A workflow may be `null` to use the built-in steps (`plan` = `init`, `plan`;
 | Key | Default | Description |
 |---|---|---|
 | `env_vars.state[]` | `[]` | Environment variables for `init` (the state backend). Each entry: `name` plus `value` or `value_from` (name of a workflow environment variable). |
-| `env_vars.commands[]` | `[]` | Environment variables for `plan` / `apply` / `run` steps; same shape. Variables nikama sets itself (`TF_CLI_CONFIG_FILE` for `allowed-providers`, `TF_DATA_DIR`) win over entries with the same name. |
+| `env_vars.commands[]` | `[]` | Environment variables for `plan` / `apply` / `destroy` and `run:` steps; same shape. Variables nikama sets itself (`TF_CLI_CONFIG_FILE` for `allowed-providers`, `TF_DATA_DIR`, and for `run:` steps those listed under [Variables available to `run:` steps](#variables-available-to-run-steps)) win over entries with the same name. |
 | `plan.steps[]` | `[init, plan]` | Steps of the plan stage; see below. |
 | `plan.filter_regex`, `apply.filter_regex` | none | Regular expression; matches in the stage output are replaced with `<REDACTED>` in logs and the comment. |
 | `apply.steps[]` | `[init, apply]` | Steps of the apply stage. |
 | `workflow_configuration.on_pull_request_pushed` | `[digger plan]` | Commands run on push. `destroy` is refused here, as it is in comments. |
 | `workflow_configuration.on_pull_request_closed` | `[digger unlock]` | Commands run on close or merge. |
 | `workflow_configuration.on_commit_to_default` | `[digger unlock]` | Commands run on a commit to the default branch. |
-| `workflow_configuration.on_pull_request_to_draft` | `[]` | Commands run when a pull request is converted to a draft. |
+| `workflow_configuration.on_pull_request_to_draft` | `[]` | Commands run when a pull request is converted to a draft. While `allow_draft_prs` is `false`, an empty list means `digger unlock` for the impacted projects. |
 | `workflow_configuration.skip_merge_check` | `false` | Skip the `mergeable` requirement for this workflow. |
 
 A step is one of:
@@ -165,8 +165,10 @@ A step is one of:
   shell: bash                       # optional
 ```
 
-`init`, `plan` and `apply` accept `extra_args`. A plan stage must start with
-`init`. `run:` steps are refused when `allow-run-steps` is `false`.
+`init`, `plan` and `apply` accept `extra_args`. A project with
+`aws_role_to_assume` (and no `aws_cognito_oidc`) needs the plan and apply
+stages of its workflow to start with `init`, where the state credentials are
+injected. `run:` steps are refused when `allow-run-steps` is `false`.
 
 ### `generate_projects`
 
@@ -180,7 +182,7 @@ directories named `modules` and hidden directories are skipped.
 | `exclude` | none | Glob the directory must not match. |
 | `blocks[]` | `[]` | Named groups, each with the keys below. |
 | `aws_role_to_assume`, `aws_cognito_oidc` | none | Applied to every generated project. |
-| `drift_include_patterns`, `drift_exclude_patterns` | `[]` | Drift filters for generated projects. |
+| `drift_include_patterns`, `drift_exclude_patterns` | `[]` | Appended to the top-level drift filters, so they apply to every project, not only generated ones. |
 
 `blocks[]`:
 
@@ -274,7 +276,7 @@ both are set; the Digger name is a fallback. Empty values count as unset.
 | `AWS_S3_BUCKET` | S3 plan bucket. |
 | `PLAN_UPLOAD_S3_ENCRYPTION_ENABLED`, `PLAN_UPLOAD_S3_ENCRYPTION_TYPE`, `PLAN_UPLOAD_S3_ENCRYPTION_KMS_ID` | S3 plan encryption. |
 | `GOOGLE_STORAGE_PLAN_ARTEFACT_BUCKET` | Cloud Storage plan bucket. |
-| `REPORTING_STRATEGY` | `comments_per_run`, `latest_run_comment` or `per_project`. |
+| `REPORTING_STRATEGY` | `comments_per_run`, `latest_run_comment` or `per_project`; sets `comment.mode` unless `nikama.yml` writes it (see `reporting-strategy`). |
 | `NIKAMA_DRIFT_SLACK_WEBHOOK_URL`, `INPUT_DRIFT_DETECTION_SLACK_NOTIFICATION_URL` | Slack webhook for drift notifications. |
 | `NIKAMA_DRIFT_GITHUB_ISSUES`, `INPUT_DRIFT_GITHUB_ISSUES` | Drift notifications as GitHub Issues; enabled when either is `true`. |
 | `TF_PLUGIN_CACHE_DIR` | When set, `init` steps run one at a time. |
@@ -289,10 +291,13 @@ are backend-only and ignored.
 | Variable | Description |
 |---|---|
 | `PROJECT_NAME` | Name of the project being run. |
+| `PROJECT_DIR` | Its `dir`, relative to the repository root. |
+| `PR_BRANCH`, `DEFAULT_BRANCH` | Head branch of the pull request and the repository's default branch (empty in manual and drift runs). |
 | `NIKAMA_OUT`, `DIGGER_OUT` | File whose contents are appended to the project's row in the PR comment. |
 | `NIKAMA_PLANFILE`, `DIGGER_PLANFILE` | Path of the plan file, after a `plan` step. |
-| `TF_DATA_DIR` | Per-project Terraform data directory set by nikama. |
+| `TF_DATA_DIR` | Per-project Terraform data directory, set when several projects share a directory. |
+| `TF_CLI_CONFIG_FILE` | The CLI configuration enforcing `allowed-providers`, when that is set. |
 | `TF_IN_AUTOMATION` | Always `true`. |
 
 `env_vars.commands` entries and the workflow's own environment are passed
-through as well.
+through as well; the variables above win over entries with the same name.

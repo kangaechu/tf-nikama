@@ -211,7 +211,7 @@ jobs:
 | （なし） | `lock-table` | 新規。デフォルトは `DiggerDynamoDBLockTable` です。 |
 | `upload-plan-destination` | `upload-plan-destination` | `aws`、`gcp`、または空。`github` と `azure` は未対応です。 |
 | `upload-plan-destination-s3-*` | 同名 | 変更なし。 |
-| `reporting-strategy` | `reporting-strategy` | 同じ値です。`comments_per_run` は、実行ごとに 1 件のコメントをその場で編集する意味になりました。 |
+| `reporting-strategy` | `reporting-strategy` | 同じ値で、`nikama.yml` の `comment.mode` に対応します（そちらに書かれていればそれが優先）。`comments_per_run` は、実行ごとに 1 件のコメントをその場で編集する意味になりました。 |
 | `mode`、`command`、`project` | `mode`、`command`、`project` | 変更なし（手動モードとドリフトモード）。 |
 | `drift-detection-slack-notification-url` | 同名 | 変更なし。 |
 | `drift-github-issues` | 同名 | 変更なし。Issue には `digger` ラベルが付きます。 |
@@ -279,7 +279,7 @@ jobs:
 | `dependency_configuration: hard` | CLI では下流への展開なし | 下流のプロジェクトも plan される |
 | plan 要約の replace | create または delete として数える | 独自の列（`±`） |
 | `destroy` の失敗（手動モード） | 成功として報告 | 失敗として報告 |
-| `mergeable_state: blocked` | チェックランを確認 | `digger/*` 以外のコミットステータスを確認 |
+| `mergeable_state: blocked` | チェックランを確認 | レビュー判定と、自身（`digger/*`）以外の*必須*チェックラン・コミットステータスを確認（実行中の自ワークフローのジョブは除外） |
 | テレメトリ | デフォルトで有効 | なし |
 
 ## 対応していないもの
@@ -292,7 +292,7 @@ tf-nikama は AWS と Google Cloud 上の Terraform / OpenTofu を対象とし�
 - Azure のロックと plan 保存
 - GitHub Artifacts への plan 保存（`upload-plan-destination: github`）
 - OPA / rego ポリシーと Checkov
-- GitLab、Bitbucket、Azure DevOps、GitHub Enterprise Server
+- GitLab、Bitbucket、Azure DevOps（GitHub Enterprise Server は未検証。`GITHUB_API_URL` は読み込まれます）
 
 これらに依存している場合は、Digger を使い続けてください。
 

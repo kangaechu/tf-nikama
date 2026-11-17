@@ -141,8 +141,18 @@ impl<'a> JobExecutor<'a> {
         })
     }
 
-    fn run_env(&self, plan_file: Option<&Path>) -> BTreeMap<String, String> {
-        let mut env = self.job.run_env.clone();
+    /// Environment of a `run:` step: the workflow's `env_vars.commands` (as
+    /// for `plan` / `apply`), then what nikama sets itself, which wins on a
+    /// clash: `PROJECT_NAME` and friends, `TF_IN_AUTOMATION`, the plan file
+    /// and output paths, and `base_env` (`TF_DATA_DIR`, `TF_CLI_CONFIG_FILE`).
+    pub(crate) fn run_env(
+        &self,
+        plan_file: Option<&Path>,
+        base_env: &BTreeMap<String, String>,
+    ) -> BTreeMap<String, String> {
+        let mut env = self.job.command_env.clone();
+        env.extend(self.job.run_env.clone());
+        env.insert("TF_IN_AUTOMATION".to_string(), "true".to_string());
         if let Some(p) = plan_file {
             env.insert(
                 "DIGGER_PLANFILE".to_string(),
@@ -156,6 +166,7 @@ impl<'a> JobExecutor<'a> {
         let out = self.additional_output_file().to_string_lossy().to_string();
         env.insert("DIGGER_OUT".to_string(), out.clone());
         env.insert("NIKAMA_OUT".to_string(), out);
+        env.extend(base_env.clone());
         env
     }
 
@@ -195,8 +206,9 @@ impl<'a> JobExecutor<'a> {
         command: &str,
         shell: Option<&str>,
         plan_file: Option<&Path>,
-        filter: Option<regex::Regex>,
+        runner: &IacRunner,
     ) -> Result<CmdOutput, ExecError> {
+        let filter = runner.filter.clone();
         let script = self.work_dir.join(format!("run-step-{}.sh", uuid_like()));
         std::fs::write(&script, format!("{}\n", command)).map_err(|e| io_err("run", e))?;
         let mut cmd = match shell {
@@ -215,7 +227,7 @@ impl<'a> JobExecutor<'a> {
         };
         cmd.arg(&script)
             .current_dir(self.project_path())
-            .envs(self.run_env(plan_file))
+            .envs(self.run_env(plan_file, &runner.base_env))
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -294,7 +306,7 @@ impl<'a> JobExecutor<'a> {
                         None
                     };
                     let out = self
-                        .run_shell(command, shell.as_deref(), pf, runner.filter.clone())
+                        .run_shell(command, shell.as_deref(), pf, &runner)
                         .await?;
                     steps.push(log("run", &out));
                 }
@@ -390,7 +402,7 @@ impl<'a> JobExecutor<'a> {
                 }
                 Step::Run { command, shell } => {
                     let out = self
-                        .run_shell(command, shell.as_deref(), plan_file, runner.filter.clone())
+                        .run_shell(command, shell.as_deref(), plan_file, &runner)
                         .await?;
                     steps.push(log("run", &out));
                 }

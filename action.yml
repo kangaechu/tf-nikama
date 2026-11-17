@@ -80,7 +80,7 @@ inputs:
     required: false
     default: ""
   reporting-strategy:
-    description: "comments_per_run (single comment, default), latest_run_comment, or per_project"
+    description: "comments_per_run (one comment per run, default), latest_run_comment or per_project; sets comment.mode unless nikama.yml writes it"
     required: false
     default: "comments_per_run"
   drift-detection-slack-notification-url:

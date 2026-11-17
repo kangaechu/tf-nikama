@@ -23,9 +23,9 @@ pub struct Args {
     #[arg(long, env = "NIKAMA_MAX_PARALLEL")]
     pub max_parallel: Option<usize>,
 
-    /// Log level: ERROR, WARN, INFO, DEBUG
-    #[arg(long, env = "NIKAMA_LOG_LEVEL", default_value = "INFO")]
-    pub log_level: String,
+    /// Log level: ERROR, WARN, INFO, DEBUG (default INFO; DIGGER_LOG_LEVEL is a fallback)
+    #[arg(long, env = "NIKAMA_LOG_LEVEL")]
+    pub log_level: Option<String>,
 
     /// Repository root (default: current directory)
     #[arg(long, env = "NIKAMA_REPO_ROOT")]
@@ -61,9 +61,13 @@ impl Env {
     }
 }
 
-fn init_logging(level: &str) {
-    let level = match crate::util::env_first(&["NIKAMA_LOG_LEVEL", "DIGGER_LOG_LEVEL"])
-        .unwrap_or_else(|| level.to_string())
+/// `--log-level` (clap already fills it from `NIKAMA_LOG_LEVEL`), then the
+/// Digger-compatible `DIGGER_LOG_LEVEL`, then `INFO`.
+fn init_logging(level: Option<&str>) {
+    let level = match level
+        .map(str::to_string)
+        .or_else(|| crate::util::env_opt("DIGGER_LOG_LEVEL"))
+        .unwrap_or_else(|| "INFO".to_string())
         .to_ascii_uppercase()
         .as_str()
     {
@@ -91,7 +95,7 @@ fn init_logging(level: &str) {
 
 pub async fn run() -> i32 {
     let args = Args::parse();
-    init_logging(&args.log_level);
+    init_logging(args.log_level.as_deref());
     tracing::info!(version = env!("CARGO_PKG_VERSION"), "nikama starting");
 
     let repo_root = args
@@ -115,7 +119,7 @@ pub async fn run() -> i32 {
     // set (so the pull request cannot change what it is run with), otherwise
     // from the working tree.
     let config_ref = crate::util::env_opt("NIKAMA_CONFIG_REF");
-    let loaded = match (&config_ref, pr_mode && !args.validate && !args.local) {
+    let mut loaded = match (&config_ref, pr_mode && !args.validate && !args.local) {
         (Some(wanted), true) => {
             let (Some(token), Some(repository)) = (&token, &repository) else {
                 tracing::error!("GITHUB_TOKEN and GITHUB_REPOSITORY are required for config-ref");
@@ -175,6 +179,10 @@ pub async fn run() -> i32 {
             path = %loaded.path.display(),
             "using legacy configuration file name; please rename it to nikama.yml"
         );
+    }
+    if let Err(e) = apply_reporting_strategy(&mut loaded.config) {
+        tracing::error!(error = %e, "REPORTING_STRATEGY error");
+        return exit::CONFIG;
     }
     let config = Arc::new(loaded.config);
     tracing::info!(
@@ -291,28 +299,43 @@ fn explicit_config_path(args: &Args) -> Option<PathBuf> {
 /// Load the configuration from the working tree. Errors are logged and
 /// returned as the exit code.
 fn load_local_config(args: &Args, repo_root: &std::path::Path) -> Result<config::Loaded, i32> {
-    match config::load(repo_root, args.config.as_deref()) {
-        Ok(l) => Ok(l),
-        Err(e) => {
-            // Legacy env var for an explicit file name.
-            let legacy = if args.config.is_none() {
-                crate::util::env_opt("DIGGER_FILENAME")
-            } else {
-                None
-            };
-            match legacy {
-                Some(legacy) => config::load(repo_root, Some(std::path::Path::new(&legacy)))
-                    .map_err(|e2| {
-                        tracing::error!(error = %e2, "configuration error");
-                        exit::CONFIG
-                    }),
-                None => {
-                    tracing::error!(error = %e, "configuration error");
-                    Err(exit::CONFIG)
-                }
-            }
-        }
+    config::load(repo_root, explicit_config_path(args).as_deref()).map_err(|e| {
+        tracing::error!(error = %e, "configuration error");
+        exit::CONFIG
+    })
+}
+
+/// Digger's `reporting-strategy` input (`REPORTING_STRATEGY`) selects the
+/// comment mode unless `nikama.yml` sets `comment.mode` itself, which wins
+/// because it is part of the (possibly trusted) configuration.
+fn apply_reporting_strategy(config: &mut Config) -> Result<(), String> {
+    let Some(strategy) = crate::util::env_opt("REPORTING_STRATEGY") else {
+        return Ok(());
+    };
+    let Some(mode) = config::CommentMode::from_reporting_strategy(&strategy) else {
+        return Err(format!(
+            "unknown REPORTING_STRATEGY '{}' (expected comments_per_run, latest_run_comment or per_project)",
+            strategy.trim()
+        ));
+    };
+    if mode == config.comment.mode {
+        return Ok(());
     }
+    if config.comment.mode_explicit {
+        tracing::info!(
+            reporting_strategy = %strategy.trim(),
+            comment_mode = config.comment.mode.as_str(),
+            "comment.mode in the configuration wins over REPORTING_STRATEGY"
+        );
+    } else {
+        tracing::info!(
+            reporting_strategy = %strategy.trim(),
+            comment_mode = mode.as_str(),
+            "comment mode taken from REPORTING_STRATEGY"
+        );
+        config.comment.mode = mode;
+    }
+    Ok(())
 }
 
 /// Build the Terraform CLI configuration for the provider allowlist from the

@@ -68,6 +68,7 @@ Atlantis のようなサーバーも、Terraform Cloud の契約も、オーケ�
 | `nikama plan --no-lock` | ロックを取らずに plan。結果を見たいだけのときに |
 | `nikama plan -p app -- -target=module.vpc` | 許可リスト内の引数を `terraform plan` に渡す |
 | `nikama apply` / `nikama apply -p app` | すべて、または 1 つのプロジェクトを apply |
+| `nikama lock` | plan せずに影響を受けるプロジェクトのロックを取得 |
 | `nikama unlock` | この PR が持つロックをすべて解放 |
 | `nikama help` | コマンド一覧を表示 |
 

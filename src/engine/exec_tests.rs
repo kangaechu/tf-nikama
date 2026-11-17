@@ -4,6 +4,7 @@
 use super::runner::{apply_args, destroy_args, init_args, plan_args};
 use super::*;
 use crate::config::{load_from_str, Config};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 fn terraform_available() -> bool {
@@ -155,6 +156,33 @@ fn apply_requirements_do_not_imply_skip_merge_check() {
     );
     assert!(!job.skip_merge_check);
     assert_eq!(job.project.apply_requirements, vec!["approved".to_string()]);
+}
+
+#[test]
+fn run_steps_get_command_env_and_nikama_variables() {
+    let f = fixture(
+        DEMO_TF,
+        "    env_vars:\n      commands:\n        - name: TF_VAR_x\n          value: from-config\n        - name: PROJECT_NAME\n          value: evil\n        - name: TF_DATA_DIR\n          value: evil\n    plan:\n      steps: [init, plan]\n",
+    );
+    let j = job(&f, Command::Plan);
+    let exec = executor(&f, &j);
+    let base = BTreeMap::from([("TF_DATA_DIR".to_string(), "/tmp/data".to_string())]);
+    let env = exec.run_env(Some(Path::new("/tmp/plan.tfplan")), &base);
+    // `env_vars.commands` reach run steps ...
+    assert_eq!(env["TF_VAR_x"], "from-config");
+    // ... but cannot override what nikama sets itself.
+    assert_eq!(env["PROJECT_NAME"], "demo");
+    assert_eq!(env["PROJECT_DIR"], "infra/demo");
+    assert_eq!(env["PR_BRANCH"], "feat");
+    assert_eq!(env["DEFAULT_BRANCH"], "main");
+    assert_eq!(env["TF_IN_AUTOMATION"], "true");
+    assert_eq!(env["TF_DATA_DIR"], "/tmp/data");
+    assert_eq!(env["NIKAMA_PLANFILE"], "/tmp/plan.tfplan");
+    assert_eq!(env["DIGGER_PLANFILE"], "/tmp/plan.tfplan");
+    assert!(env["NIKAMA_OUT"].ends_with("additional-output.log"));
+    assert_eq!(env["NIKAMA_OUT"], env["DIGGER_OUT"]);
+    // Before a plan step there is no plan file variable.
+    assert!(!exec.run_env(None, &base).contains_key("NIKAMA_PLANFILE"));
 }
 
 struct Fixture {

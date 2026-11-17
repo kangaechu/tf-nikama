@@ -653,7 +653,12 @@ pub(super) async fn build_trigger(
                     "selector(s) matched no impacted project: {}",
                     unmatched.join(", ")
                 ));
-                notes.extend(branch_filter_notes(config, &cmd.projects, &pr.base_ref));
+                notes.extend(branch_filter_notes(
+                    config,
+                    &cmd.projects,
+                    &cmd.dirs,
+                    &pr.base_ref,
+                ));
             }
             if impacted.is_empty() {
                 notes.push("no projects are impacted by this pull request".into());
@@ -1350,25 +1355,34 @@ pub(super) fn check_approved(
     }
 }
 
-/// Explain `-p` selectors that name a project excluded by its `branch`
-/// filter for a pull request into `base_ref`.
+/// Explain `-p` / `-d` selectors that name a project excluded by its
+/// `branch` filter for a pull request into `base_ref`. One note per project,
+/// in configuration order.
 pub(super) fn branch_filter_notes(
     config: &Config,
-    selectors: &[String],
+    projects: &[String],
+    dirs: &[String],
     base_ref: &str,
 ) -> Vec<String> {
-    selectors
+    let dirs: Vec<String> = dirs
         .iter()
-        .filter_map(|name| {
-            let p = config
-                .projects
+        .map(|d| crate::config::normalize_path(d))
+        .collect();
+    config
+        .projects
+        .iter()
+        .filter(|p| {
+            projects
                 .iter()
-                .find(|p| &p.name == name || p.alias.as_deref() == Some(name.as_str()))?;
+                .any(|name| &p.name == name || p.alias.as_deref() == Some(name.as_str()))
+                || dirs.contains(&crate::config::normalize_path(&p.dir))
+        })
+        .filter_map(|p| {
             let re = p.branch.as_ref()?;
             (!re.is_match(base_ref)).then(|| {
                 format!(
                     "project '{}' only runs for pull requests into branches matching `{}`, not `{}`",
-                    name,
+                    p.name,
                     re.as_str(),
                     base_ref
                 )

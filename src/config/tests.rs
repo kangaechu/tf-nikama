@@ -44,7 +44,33 @@ fn defaults_are_applied() {
     assert_eq!(c.concurrency.apply_parallelism, 1);
     assert_eq!(c.timezone, chrono_tz::UTC);
     assert_eq!(c.comment.mode, CommentMode::Single);
+    assert!(!c.comment.mode_explicit);
     assert_eq!(c.comment.show_empty_plans, ShowEmptyPlans::Table);
+}
+
+#[test]
+fn comment_mode_is_flagged_when_written_and_maps_from_reporting_strategy() {
+    let c = load("projects: []\ncomment:\n  mode: single\n").unwrap();
+    assert_eq!(c.comment.mode, CommentMode::Single);
+    assert!(c.comment.mode_explicit);
+    let c = load("projects: []\ncomment:\n  show_empty_plans: hide\n").unwrap();
+    assert!(!c.comment.mode_explicit);
+
+    // Digger's reporting-strategy names.
+    assert_eq!(
+        CommentMode::from_reporting_strategy("comments_per_run"),
+        Some(CommentMode::Single)
+    );
+    assert_eq!(
+        CommentMode::from_reporting_strategy(" Per_Project "),
+        Some(CommentMode::PerProject)
+    );
+    assert_eq!(
+        CommentMode::from_reporting_strategy("latest_run_comment"),
+        Some(CommentMode::Latest)
+    );
+    assert_eq!(CommentMode::from_reporting_strategy("single"), None);
+    assert_eq!(CommentMode::from_reporting_strategy(""), None);
 }
 
 #[test]

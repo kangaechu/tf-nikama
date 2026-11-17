@@ -147,7 +147,9 @@ projects this PR already holds still run. On close / merge and on a bare
 `digger unlock`, every lock the PR still holds is released, not only those of
 the currently impacted projects. A lock held by a different open pull request
 is never released this way; a lock left behind by a closed pull request is
-taken over by the next PR that needs the project.
+taken over by the next PR that needs the project. `digger lock` takes the
+locks of the impacted (or `-p` / `-d` selected) projects without planning;
+`digger unlock -p <project>` releases only that project's lock.
 
 `pr_locks` decides when a lock is taken:
 
@@ -531,7 +533,7 @@ The action sets these for you; when running the binary directly:
 | `INPUT_DIGGER_COMMAND`, `INPUT_DIGGER_PROJECT` | manual mode |
 | `LOCK_PROVIDER` (`aws`/`s3`/`gcp`/`noop`), `NIKAMA_LOCK_TABLE`, `AWS_S3_LOCK_BUCKET`, `GOOGLE_STORAGE_LOCK_BUCKET`, `DISABLE_LOCKING` | PR locks |
 | `PLAN_UPLOAD_DESTINATION` (`aws`/`gcp`), `AWS_S3_BUCKET`, `PLAN_UPLOAD_S3_*`, `GOOGLE_STORAGE_PLAN_ARTEFACT_BUCKET` | plan storage |
-| `REPORTING_STRATEGY` | `comments_per_run` / `latest_run_comment` / `per_project` |
+| `REPORTING_STRATEGY` | `comments_per_run` / `latest_run_comment` / `per_project`; Digger's name for `comment.mode`, which wins when written in `nikama.yml` |
 | `INPUT_DRIFT_DETECTION_SLACK_NOTIFICATION_URL`, `INPUT_DRIFT_GITHUB_ISSUES` | drift notifications |
 | `NIKAMA_CONFIG`, `NIKAMA_MAX_PARALLEL`, `NIKAMA_LOG_LEVEL` | CLI options |
 | `NIKAMA_CONFIG_REF`, `NIKAMA_ALLOW_RUN_STEPS` | trusted configuration (see "Trusting the configuration") |

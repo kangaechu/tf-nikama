@@ -1714,14 +1714,19 @@ fn branch_filter_notes_explain_unmatched_selectors() {
             "any".into(),
             "nope".into(),
         ],
+        &[],
         "develop",
     );
-    assert_eq!(notes.len(), 2);
-    assert!(notes[0].contains(
-        "project 'prod' only runs for pull requests into branches matching `^main$`, not `develop`"
-    ));
-    assert!(notes[1].starts_with("project 'production'"));
-    assert!(branch_filter_notes(&config, &["prod".into()], "main").is_empty());
+    // The name and the alias refer to the same project: one note.
+    assert_eq!(
+        notes,
+        vec!["project 'prod' only runs for pull requests into branches matching `^main$`, not `develop`"]
+    );
+    // `-d` selectors are explained the same way.
+    let by_dir = branch_filter_notes(&config, &[], &["./infra/app/".into()], "develop");
+    assert_eq!(by_dir, notes);
+    assert!(branch_filter_notes(&config, &[], &["infra/any".into()], "develop").is_empty());
+    assert!(branch_filter_notes(&config, &["prod".into()], &[], "main").is_empty());
 }
 
 // `pr_locks: on_apply`: plans never lock and leave existing locks alone.
