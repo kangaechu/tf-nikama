@@ -323,7 +323,7 @@ nikama が作成するため、ロールにはテーブルに対する `dynamodb
 オンデマンドキャパシティでテーブルを事前に作成してください。
 
 ```yaml
-      - uses: kangaechu/tf-nikama@v0.8.0
+      - uses: kangaechu/tf-nikama@v0.9.0
         with:
           upload-plan-destination: aws
           upload-plan-destination-s3-bucket: my-plan-bucket
@@ -338,7 +338,7 @@ nikama が作成するため、ロールにはテーブルに対する `dynamodb
 ロックバケットは plan バケットと兼用できます。
 
 ```yaml
-      - uses: kangaechu/tf-nikama@v0.8.0
+      - uses: kangaechu/tf-nikama@v0.9.0
         with:
           lock-provider: s3
           aws-lock-bucket: my-lock-bucket
@@ -358,7 +358,7 @@ Cloud Storage のバケットにします。サービスアカウントには両
         with:
           workload_identity_provider: projects/123456789012/locations/global/workloadIdentityPools/github/providers/github
           service_account: nikama@my-project.iam.gserviceaccount.com
-      - uses: kangaechu/tf-nikama@v0.8.0
+      - uses: kangaechu/tf-nikama@v0.9.0
         with:
           lock-provider: gcp
           google-lock-bucket: my-lock-bucket
@@ -413,7 +413,7 @@ Cloud Storage のバケットにします。サービスアカウントには両
           private-key: ${{ secrets.NIKAMA_APP_PRIVATE_KEY }}
       - uses: actions/checkout@v7
         # ...
-      - uses: kangaechu/tf-nikama@v0.8.0
+      - uses: kangaechu/tf-nikama@v0.9.0
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           # ...
@@ -463,7 +463,7 @@ README のクイックスタートの `if:` ガードは、リポジトリ外か
   含むものを拒否します。
 
 ```yaml
-      - uses: kangaechu/tf-nikama@v0.8.0
+      - uses: kangaechu/tf-nikama@v0.9.0
         with:
           config-ref: default
           allow-run-steps: "false"
@@ -477,7 +477,7 @@ README のクイックスタートの `if:` ガードは、リポジトリ外か
 インストールできるものを制限します:
 
 ```yaml
-      - uses: kangaechu/tf-nikama@v0.8.0
+      - uses: kangaechu/tf-nikama@v0.9.0
         with:
           allowed-providers: "hashicorp/aws, hashicorp/random, app.terraform.io/myorg/*"
 ```
