@@ -103,14 +103,25 @@ impl DriftNotifier for SlackWebhook {
 
 pub struct GithubIssueNotifier {
     github: GithubClient,
+    labels: Vec<String>,
     /// Wakeup word used in the `apply` hint of the issue body.
     wakeup_word: String,
 }
 
 impl GithubIssueNotifier {
-    pub fn new(github: GithubClient, wakeup_word: &str) -> Self {
+    pub fn new(github: GithubClient, wakeup_word: &str, label_input: &str) -> Self {
+        let mut labels: Vec<String> = label_input
+            .split(',')
+            .map(str::trim)
+            .filter(|label| !label.is_empty())
+            .map(str::to_owned)
+            .collect();
+        if labels.is_empty() {
+            labels.push("digger".to_string());
+        }
         Self {
             github,
+            labels,
             wakeup_word: wakeup_word.to_string(),
         }
     }
@@ -136,12 +147,14 @@ impl DriftNotifier for GithubIssueNotifier {
             truncate_chars(plan, budget, "\n... (truncated)"),
             body_tail
         );
-        let existing = self.github.list_open_issues(Some("digger")).await?;
+        let label_filter = self.labels.join(",");
+        let existing = self.github.list_open_issues(Some(&label_filter)).await?;
         if let Some(issue) = existing.iter().find(|i| i.title == title) {
             self.github.update_issue_body(issue.number, &body).await?;
             tracing::info!(issue = issue.number, project, "updated drift issue");
         } else {
-            let created = self.github.create_issue(&title, &body, &["digger"]).await?;
+            let labels: Vec<&str> = self.labels.iter().map(String::as_str).collect();
+            let created = self.github.create_issue(&title, &body, &labels).await?;
             tracing::info!(issue = created.number, project, "created drift issue");
         }
         Ok(())
@@ -175,9 +188,12 @@ pub fn from_env(
     if crate::util::env_is_true("NIKAMA_DRIFT_GITHUB_ISSUES")
         || crate::util::env_is_true("INPUT_DRIFT_GITHUB_ISSUES")
     {
+        let label_input =
+            crate::util::env_opt("NIKAMA_DRIFT_GITHUB_ISSUE_LABEL").unwrap_or_default();
         return Ok(Box::new(GithubIssueNotifier::new(
             github.clone(),
             wakeup_word,
+            &label_input,
         )));
     }
     anyhow::bail!(

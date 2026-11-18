@@ -212,7 +212,7 @@ What changed and why:
 | `reporting-strategy` | `reporting-strategy` | Same values, mapped to `comment.mode` in `nikama.yml` (which wins when written there). `comments_per_run` now means one comment per run, edited in place. |
 | `mode`, `command`, `project` | `mode`, `command`, `project` | Unchanged (manual and drift modes). |
 | `drift-detection-slack-notification-url` | same | Unchanged. |
-| `drift-github-issues` | same | Unchanged. Issues are labelled `digger`. |
+| `drift-github-issues` | same | The default label is `digger`. Set `drift-github-issue-label` to override it. |
 | `github-token` | `github-token` | Unchanged. |
 | (none) | `max-parallel`, `log-level`, `version` | New. |
 | (none) | `config-ref`, `allow-run-steps` | New. Read `nikama.yml` from a trusted ref on PR runs / refuse `run:` steps ([CONFIGURATION.md](CONFIGURATION.md) "Trusting the configuration"). |

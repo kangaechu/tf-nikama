@@ -648,9 +648,9 @@ query($owner: String!, $repo: String!, $number: Int!) {
         Ok(())
     }
 
-    pub async fn list_open_issues(&self, label: Option<&str>) -> Result<Vec<IssueInfo>> {
-        let extra = match label {
-            Some(l) => format!("&labels={}", urlencoding::encode(l)),
+    pub async fn list_open_issues(&self, labels: Option<&str>) -> Result<Vec<IssueInfo>> {
+        let extra = match labels {
+            Some(labels) => format!("&labels={}", urlencoding::encode(labels)),
             None => String::new(),
         };
         let items = self

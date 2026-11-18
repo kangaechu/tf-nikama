@@ -8,7 +8,7 @@ use crate::config::{CommentMode, ShowEmptyPlans};
 use crate::engine::{ApplySummary, Command, PlanSummary};
 use crate::github::GithubClient;
 use serde_json::json;
-use wiremock::matchers::{body_partial_json, method, path, path_regex};
+use wiremock::matchers::{body_partial_json, method, path, path_regex, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const MARKER: &str = "<!-- nikama:run=42:attempt=1 -->";
@@ -412,18 +412,29 @@ async fn slack_notifier_reports_http_errors() {
 
 #[tokio::test]
 async fn issue_notifier_creates_or_updates() {
+    assert_issue_notifier_creates_or_updates("", &["digger"]).await;
+    assert_issue_notifier_creates_or_updates(" , ", &["digger"]).await;
+    assert_issue_notifier_creates_or_updates("terraform drift", &["terraform drift"]).await;
+    assert_issue_notifier_creates_or_updates(" terraform drift, , 🚨 ", &["terraform drift", "🚨"])
+        .await;
+}
+
+async fn assert_issue_notifier_creates_or_updates(label_input: &str, labels: &[&str]) {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/repos/o/r/issues"))
+        .and(query_param("state", "open"))
+        .and(query_param("labels", labels.join(",")))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!([
             {"number": 3, "title": "Drift detected in project: existing", "html_url": ""}
         ])))
+        .expect(2)
         .mount(&server)
         .await;
     Mock::given(method("POST"))
         .and(path("/repos/o/r/issues"))
         .and(body_partial_json(
-            json!({"title": "Drift detected in project: fresh", "labels": ["digger"]}),
+            json!({"title": "Drift detected in project: fresh", "labels": labels}),
         ))
         .respond_with(
             ResponseTemplate::new(201)
@@ -438,7 +449,7 @@ async fn issue_notifier_creates_or_updates() {
         .expect(1)
         .mount(&server)
         .await;
-    let n = GithubIssueNotifier::new(github(&server), "nikama");
+    let n = GithubIssueNotifier::new(github(&server), "nikama", label_input);
     n.notify("fresh", "o/r", "plan").await.unwrap();
     n.notify("existing", "o/r", "plan").await.unwrap();
 }

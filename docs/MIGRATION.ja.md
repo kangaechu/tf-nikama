@@ -215,7 +215,7 @@ jobs:
 | `reporting-strategy` | `reporting-strategy` | 同じ値で、`nikama.yml` の `comment.mode` に対応します（そちらに書かれていればそれが優先）。`comments_per_run` は、実行ごとに 1 件のコメントをその場で編集する意味になりました。 |
 | `mode`、`command`、`project` | `mode`、`command`、`project` | 変更なし（手動モードとドリフトモード）。 |
 | `drift-detection-slack-notification-url` | 同名 | 変更なし。 |
-| `drift-github-issues` | 同名 | 変更なし。Issue には `digger` ラベルが付きます。 |
+| `drift-github-issues` | 同名 | 既定のラベルは `digger` です。`drift-github-issue-label` で変更できます。 |
 | `github-token` | `github-token` | 変更なし。 |
 | （なし） | `max-parallel`、`log-level`、`version` | 新規。 |
 | （なし） | `config-ref`、`allow-run-steps` | 新規。PR の実行で信頼された ref から `nikama.yml` を読む／`run:` ステップを拒否する（[CONFIGURATION.ja.md](CONFIGURATION.ja.md) の「設定の信頼」）。 |

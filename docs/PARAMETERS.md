@@ -73,6 +73,7 @@ All inputs of `kangaechu/tf-nikama` are optional.
 | `reporting-strategy` | `comments_per_run` | Digger's name for `comment.mode`: `comments_per_run` (`single`, one comment per run, edited in place), `per_project` or `latest_run_comment` (`latest`). A `comment.mode` written in `nikama.yml` wins. |
 | `drift-detection-slack-notification-url` | `` | Slack incoming webhook for drift notifications. |
 | `drift-github-issues` | `false` | Create or update one GitHub Issue per drifted project (needs `issues: write`). |
+| `drift-github-issue-label` | `digger` | Comma-separated repository labels, e.g. `terraform-drift,infra`. New drift issues get all specified labels. The lookup matches open issues with all those labels. |
 | `block-filters` | `` | Drift mode: comma-separated `generate_projects` block names to include. |
 
 ## Action outputs
@@ -279,6 +280,7 @@ both are set; the Digger name is a fallback. Empty values count as unset.
 | `REPORTING_STRATEGY` | `comments_per_run`, `latest_run_comment` or `per_project`; sets `comment.mode` unless `nikama.yml` writes it (see `reporting-strategy`). |
 | `NIKAMA_DRIFT_SLACK_WEBHOOK_URL`, `INPUT_DRIFT_DETECTION_SLACK_NOTIFICATION_URL` | Slack webhook for drift notifications. |
 | `NIKAMA_DRIFT_GITHUB_ISSUES`, `INPUT_DRIFT_GITHUB_ISSUES` | Drift notifications as GitHub Issues; enabled when either is `true`. |
+| `NIKAMA_DRIFT_GITHUB_ISSUE_LABEL` | Comma-separated labels for drift issues. Defaults to `digger` when no label is specified. |
 | `TF_PLUGIN_CACHE_DIR` | When set, `init` steps run one at a time. |
 | `NIKAMA_SERIALIZE_INIT` | `true` also runs `init` steps one at a time. |
 | `TF_CLI_CONFIG_FILE` | Existing Terraform CLI configuration; kept and extended when `allowed-providers` is set. |

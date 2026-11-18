@@ -91,6 +91,10 @@ inputs:
     description: "Create/update a GitHub issue per drifted project"
     required: false
     default: "false"
+  drift-github-issue-label:
+    description: "Comma-separated labels used to find and create GitHub issues for drift"
+    required: false
+    default: "digger"
   block-filters:
     description: "Drift mode: comma-separated block names to include"
     required: false
@@ -181,6 +185,7 @@ runs:
         REPORTING_STRATEGY: ${{ inputs.reporting-strategy }}
         INPUT_DRIFT_DETECTION_SLACK_NOTIFICATION_URL: ${{ inputs.drift-detection-slack-notification-url }}
         NIKAMA_DRIFT_GITHUB_ISSUES: ${{ inputs.drift-github-issues }}
+        NIKAMA_DRIFT_GITHUB_ISSUE_LABEL: ${{ inputs.drift-github-issue-label }}
       run: |
         set -euo pipefail
         # Empty inputs must be unset, not empty strings, for clap `env` handling.
