@@ -10,7 +10,6 @@ pub use dynamodb::DynamoDbLock;
 pub use gcs::GcsLock;
 pub use s3::S3Lock;
 
-use crate::github::GithubClient;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -113,19 +112,27 @@ pub enum HolderStatus {
     Other(u64),
 }
 
+/// Whether a pull request is closed. A lock held by a closed PR may be taken
+/// over, so this is the one thing the locker needs to know about pull
+/// requests; the GitHub client answers it in production.
+#[async_trait]
+pub trait PrState: Send + Sync {
+    async fn is_closed(&self, pr: u64) -> anyhow::Result<bool>;
+}
+
 /// PR-lock semantics on top of a `Lock` backend: a lock held by a closed PR
 /// is taken over; a lock held by an open PR blocks.
 pub struct PrLocker {
     pub backend: Arc<dyn Lock>,
-    pub github: GithubClient,
+    prs: Arc<dyn PrState>,
     closed_cache: Mutex<HashMap<u64, bool>>,
 }
 
 impl PrLocker {
-    pub fn new(backend: Arc<dyn Lock>, github: GithubClient) -> Self {
+    pub fn new(backend: Arc<dyn Lock>, prs: Arc<dyn PrState>) -> Self {
         Self {
             backend,
-            github,
+            prs,
             closed_cache: Mutex::new(HashMap::new()),
         }
     }
@@ -134,7 +141,7 @@ impl PrLocker {
         if let Some(v) = self.closed_cache.lock().await.get(&pr) {
             return Ok(*v);
         }
-        let closed = self.github.get_pr(pr).await?.is_closed();
+        let closed = self.prs.is_closed(pr).await?;
         self.closed_cache.lock().await.insert(pr, closed);
         Ok(closed)
     }

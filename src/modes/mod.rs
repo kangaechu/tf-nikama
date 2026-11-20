@@ -45,3 +45,12 @@ pub mod exit {
     pub const JOB_FAILED: i32 = 8;
     pub const NO_CI: i32 = 10;
 }
+
+/// The lock layer asks only whether a pull request is closed; answer from
+/// the GitHub API.
+#[async_trait::async_trait]
+impl crate::lock::PrState for crate::github::GithubClient {
+    async fn is_closed(&self, pr: u64) -> anyhow::Result<bool> {
+        Ok(self.get_pr(pr).await?.is_closed())
+    }
+}

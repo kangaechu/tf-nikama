@@ -922,7 +922,12 @@ async fn mock_pr_state(server: &MockServer, number: u64, state: &str) {
 fn pr_locker(server: &MockServer, backend: Arc<dyn Lock>) -> PrLocker {
     PrLocker::new(
         backend,
-        crate::github::GithubClient::new("t", "o", "r", Some(&server.uri())),
+        Arc::new(crate::github::GithubClient::new(
+            "t",
+            "o",
+            "r",
+            Some(&server.uri()),
+        )),
     )
 }
 

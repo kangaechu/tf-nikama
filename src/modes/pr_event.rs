@@ -398,7 +398,7 @@ async fn verify_checkout(
 
 async fn init_locker(config: &Config, github: &GithubClient) -> Result<Arc<PrLocker>, Abort> {
     match crate::lock::from_env(config.pr_locks.enabled()).await {
-        Ok(backend) => Ok(Arc::new(PrLocker::new(backend, github.clone()))),
+        Ok(backend) => Ok(Arc::new(PrLocker::new(backend, Arc::new(github.clone())))),
         Err(e) => {
             tracing::error!(error = %e, "could not initialise lock provider");
             Err(Abort::new(
@@ -1204,7 +1204,7 @@ async fn sweep_locks_from_env(
     keep: &[String],
 ) -> anyhow::Result<Vec<String>> {
     let backend = crate::lock::from_env(config.pr_locks.enabled()).await?;
-    let locker = PrLocker::new(backend, github.clone());
+    let locker = PrLocker::new(backend, Arc::new(github.clone()));
     let storage = crate::storage::from_env().await?;
     sweep_locks(&locker, storage.as_ref(), pr, namespace, keep).await
 }
