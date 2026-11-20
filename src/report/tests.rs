@@ -8,7 +8,7 @@ use crate::config::{CommentMode, ShowEmptyPlans};
 use crate::engine::{ApplySummary, Command, PlanSummary};
 use crate::github::GithubClient;
 use serde_json::json;
-use wiremock::matchers::{body_partial_json, method, path, path_regex, query_param};
+use wiremock::matchers::{body_json, body_partial_json, method, path, path_regex, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const MARKER: &str = "<!-- nikama:run=42:attempt=1 -->";
@@ -383,17 +383,41 @@ async fn slack_notifier_splits_long_plans() {
         .map(|i| format!("line {:04}", i))
         .collect::<Vec<_>>()
         .join("\n");
-    SlackWebhook::new(&format!("{}/hook", server.uri()))
+    let prefix = "<@U012AB3CD> Please check the drift.";
+    SlackWebhook::new(&format!("{}/hook", server.uri()), Some(prefix))
         .notify("proj", "o/r", &plan)
         .await
         .unwrap();
     let reqs = server.received_requests().await.unwrap();
     let first: serde_json::Value = serde_json::from_slice(&reqs[0].body).unwrap();
-    assert!(first["text"]
-        .as_str()
-        .unwrap()
-        .contains("Infrastructure Drift Detected"));
+    assert!(first["text"].as_str().unwrap().starts_with(&format!(
+        "{prefix}\n:warning: *Infrastructure Drift Detected*"
+    )));
     assert!(first["text"].as_str().unwrap().contains("*Project:* proj"));
+    for request in &reqs[1..] {
+        let continuation: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+        assert!(!continuation["text"].as_str().unwrap().contains(prefix));
+    }
+}
+
+#[tokio::test]
+async fn slack_notifier_prepends_prefix_to_error_notifications() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(body_json(json!({
+            "text": "<!subteam^SAZ94GDB8> Please check the run.\n:x: *Drift detection failed*\n*Repository:* o/r\n*Project:* p\n```\nboom\n```"
+        })))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&server)
+        .await;
+    SlackWebhook::new(
+        &server.uri(),
+        Some("<!subteam^SAZ94GDB8> Please check the run."),
+    )
+    .notify_error("p", "o/r", "boom")
+    .await
+    .unwrap();
 }
 
 #[tokio::test]
@@ -403,7 +427,7 @@ async fn slack_notifier_reports_http_errors() {
         .respond_with(ResponseTemplate::new(500))
         .mount(&server)
         .await;
-    let err = SlackWebhook::new(&server.uri())
+    let err = SlackWebhook::new(&server.uri(), None)
         .notify_error("p", "o/r", "boom")
         .await
         .unwrap_err();

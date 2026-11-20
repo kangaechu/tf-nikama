@@ -71,9 +71,19 @@
 |---|---|---|
 | `reporting-strategy` | `comments_per_run` | `comment.mode` の Digger 名。`comments_per_run`（`single`: 実行ごとに 1 件のコメントをその場で編集）、`per_project`、`latest_run_comment`（`latest`）。`nikama.yml` に `comment.mode` が書かれていればそちらが優先されます。 |
 | `drift-detection-slack-notification-url` | `` | ドリフト通知用の Slack incoming webhook。 |
+| `drift-detection-slack-notification-prefix` | `` | ドリフト検知時とチェック失敗時に、通知の先頭に追加する文面。plan が複数のメッセージに分かれる場合は、最初のメッセージにだけ追加します。 |
 | `drift-github-issues` | `false` | ドリフトしたプロジェクトごとに GitHub Issue を作成・更新します（`issues: write` が必要）。 |
 | `drift-github-issue-label` | `digger` | リポジトリのラベルをカンマ区切りで指定します（例 `terraform-drift,infra`）。新規 Issue には指定したラベルをすべて付け、検索ではすべてのラベルが付いた未解決の Issue を探します。 |
 | `block-filters` | `` | ドリフトモード: 対象にする `generate_projects` のブロック名（カンマ区切り）。 |
+
+メンションを入れるには、Slack のユーザー ID を `<@U012AB3CD>`、ユーザーグループ ID を `<!subteam^SAZ94GDB8>` の形式で指定します。
+
+```yaml
+with:
+  mode: drift-detection
+  drift-detection-slack-notification-url: ${{ secrets.SLACK_WEBHOOK }}
+  drift-detection-slack-notification-prefix: '<@U012AB3CD> チェック結果を確認してください。'
+```
 
 ## アクションの出力
 
@@ -276,6 +286,7 @@ STS の代わりに Cognito ID プールから取得する認証情報。
 | `GOOGLE_STORAGE_PLAN_ARTEFACT_BUCKET` | Cloud Storage の plan バケット。 |
 | `REPORTING_STRATEGY` | `comments_per_run`、`latest_run_comment`、`per_project`。`nikama.yml` に `comment.mode` が書かれていなければ、これが `comment.mode` になります（`reporting-strategy` 参照）。 |
 | `NIKAMA_DRIFT_SLACK_WEBHOOK_URL`、`INPUT_DRIFT_DETECTION_SLACK_NOTIFICATION_URL` | ドリフト通知の Slack webhook。 |
+| `NIKAMA_DRIFT_SLACK_NOTIFICATION_PREFIX` | Action の入力 `drift-detection-slack-notification-prefix` と同じ。 |
 | `NIKAMA_DRIFT_GITHUB_ISSUES`、`INPUT_DRIFT_GITHUB_ISSUES` | ドリフト通知を GitHub Issue にする。どちらかが `true` なら有効。 |
 | `NIKAMA_DRIFT_GITHUB_ISSUE_LABEL` | ドリフト Issue のラベルをカンマ区切りで指定します。指定がなければ `digger` を使います。 |
 | `TF_PLUGIN_CACHE_DIR` | 設定されていると `init` ステップを 1 つずつ実行。 |
