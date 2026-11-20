@@ -2,7 +2,7 @@
 
 use super::exit;
 use super::run::{run_by_levels, run_parallel, JobResult, Outcome, RunContext};
-use crate::cli::Env;
+use super::Env;
 use crate::config::{CommentMode, Config, LockMode};
 use crate::engine::{Command, Job};
 use crate::github::comment_cmd::help_text;

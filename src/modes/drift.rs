@@ -2,7 +2,7 @@
 
 use super::exit;
 use super::run::{run_parallel, Outcome, RunContext};
-use crate::cli::Env;
+use super::Env;
 use crate::config::{matches_patterns, Config};
 use crate::engine::{Command, Job};
 use crate::github::GithubClient;

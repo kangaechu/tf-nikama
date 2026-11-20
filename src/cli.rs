@@ -2,11 +2,10 @@
 
 use crate::config::{self, Config};
 use crate::github::{GithubClient, GithubContext};
-use crate::modes::{self, exit};
+use crate::modes::{self, exit, Env};
 use clap::Parser;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -38,27 +37,6 @@ pub struct Args {
     /// Only load and validate the configuration, then print the projects
     #[arg(long)]
     pub validate: bool,
-}
-
-/// Runtime environment shared by the modes.
-pub struct Env {
-    pub repo_root: PathBuf,
-    pub work_root: PathBuf,
-    pub max_parallel: Option<usize>,
-    pub serialize_init: bool,
-    /// Terraform CLI configuration enforcing the provider allowlist, if any.
-    pub cli_config: Option<String>,
-}
-
-impl Env {
-    /// Mutex used to serialise `terraform init` when a plugin cache is in use.
-    pub fn init_lock(&self) -> Option<Arc<Mutex<()>>> {
-        if self.serialize_init {
-            Some(Arc::new(Mutex::new(())))
-        } else {
-            None
-        }
-    }
 }
 
 /// `--log-level` (clap already fills it from `NIKAMA_LOG_LEVEL`), then the
