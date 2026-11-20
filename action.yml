@@ -87,6 +87,10 @@ inputs:
     description: "Slack incoming webhook for drift notifications"
     required: false
     default: ""
+  drift-detection-slack-notification-prefix:
+    description: "Text to prepend to Slack drift and error notifications. Supports Slack mention syntax."
+    required: false
+    default: ""
   drift-github-issues:
     description: "Create/update a GitHub issue per drifted project"
     required: false
@@ -184,6 +188,7 @@ runs:
         GOOGLE_STORAGE_PLAN_ARTEFACT_BUCKET: ${{ inputs.upload-plan-destination-gcp-bucket }}
         REPORTING_STRATEGY: ${{ inputs.reporting-strategy }}
         INPUT_DRIFT_DETECTION_SLACK_NOTIFICATION_URL: ${{ inputs.drift-detection-slack-notification-url }}
+        NIKAMA_DRIFT_SLACK_NOTIFICATION_PREFIX: ${{ inputs.drift-detection-slack-notification-prefix }}
         NIKAMA_DRIFT_GITHUB_ISSUES: ${{ inputs.drift-github-issues }}
         NIKAMA_DRIFT_GITHUB_ISSUE_LABEL: ${{ inputs.drift-github-issue-label }}
       run: |

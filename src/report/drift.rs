@@ -14,13 +14,15 @@ pub trait DriftNotifier: Send + Sync {
 
 pub struct SlackWebhook {
     url: String,
+    prefix: String,
     http: reqwest::Client,
 }
 
 impl SlackWebhook {
-    pub fn new(url: &str) -> Self {
+    pub fn new(url: &str, prefix: Option<&str>) -> Self {
         Self {
             url: url.to_string(),
+            prefix: prefix.map(|text| format!("{text}\n")).unwrap_or_default(),
             http: reqwest::Client::new(),
         }
     }
@@ -62,8 +64,8 @@ pub fn split_code_blocks(text: &str, max: usize) -> Vec<String> {
 impl DriftNotifier for SlackWebhook {
     async fn notify(&self, project: &str, repo: &str, plan: &str) -> anyhow::Result<()> {
         let header = format!(
-            ":warning: *Infrastructure Drift Detected*\n*Repository:* {}\n*Project:* {}\n",
-            repo, project
+            "{}:warning: *Infrastructure Drift Detected*\n*Repository:* {repo}\n*Project:* {project}\n",
+            self.prefix
         );
         let blocks = split_code_blocks(plan, 3_800);
         if blocks.is_empty() {
@@ -88,9 +90,8 @@ impl DriftNotifier for SlackWebhook {
 
     async fn notify_error(&self, project: &str, repo: &str, error: &str) -> anyhow::Result<()> {
         self.send(&format!(
-            ":x: *Drift detection failed*\n*Repository:* {}\n*Project:* {}\n```\n{}\n```",
-            repo,
-            project,
+            "{}:x: *Drift detection failed*\n*Repository:* {repo}\n*Project:* {project}\n```\n{}\n```",
+            self.prefix,
             truncate_chars(error, 3_000, "\n...")
         ))
         .await
@@ -183,7 +184,8 @@ pub fn from_env(
         "NIKAMA_DRIFT_SLACK_WEBHOOK_URL",
         "INPUT_DRIFT_DETECTION_SLACK_NOTIFICATION_URL",
     ]) {
-        return Ok(Box::new(SlackWebhook::new(&url)));
+        let prefix = crate::util::env_opt("NIKAMA_DRIFT_SLACK_NOTIFICATION_PREFIX");
+        return Ok(Box::new(SlackWebhook::new(&url, prefix.as_deref())));
     }
     if crate::util::env_is_true("NIKAMA_DRIFT_GITHUB_ISSUES")
         || crate::util::env_is_true("INPUT_DRIFT_GITHUB_ISSUES")
