@@ -1,34 +1,36 @@
-//! PR lock semantics tests with an in-memory backend and a mock GitHub API.
+//! PR lock semantics tests with in-memory backend and pull request state.
 
 use super::*;
-use serde_json::json;
-use wiremock::matchers::{method, path};
-use wiremock::{Mock, MockServer, ResponseTemplate};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use super::testing::MemLock;
 
-async fn mock_pr(server: &MockServer, number: u64, state: &str) {
-    Mock::given(method("GET"))
-        .and(path(format!("/repos/o/r/pulls/{}", number)))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "head": {"ref": "x", "sha": "s"}, "base": {"ref": "main", "sha": "b"},
-            "merged": false, "state": state, "draft": false
-        })))
-        .mount(server)
-        .await;
+/// Pull requests known to be closed; every other number is open.
+#[derive(Default)]
+struct ClosedPrs {
+    closed: Vec<u64>,
+    lookups: AtomicUsize,
 }
 
-fn locker(server: &MockServer, backend: Arc<dyn Lock>) -> PrLocker {
-    PrLocker::new(
-        backend,
-        GithubClient::new("t", "o", "r", Some(&server.uri())),
-    )
+#[async_trait]
+impl PrState for ClosedPrs {
+    async fn is_closed(&self, pr: u64) -> anyhow::Result<bool> {
+        self.lookups.fetch_add(1, Ordering::SeqCst);
+        Ok(self.closed.contains(&pr))
+    }
+}
+
+fn locker(closed: &[u64], backend: Arc<dyn Lock>) -> (PrLocker, Arc<ClosedPrs>) {
+    let prs = Arc::new(ClosedPrs {
+        closed: closed.to_vec(),
+        lookups: AtomicUsize::new(0),
+    });
+    (PrLocker::new(backend, prs.clone()), prs)
 }
 
 #[tokio::test]
 async fn acquire_then_already_held() {
-    let server = MockServer::start().await;
-    let l = locker(&server, Arc::new(MemLock::default()));
+    let (l, _) = locker(&[], Arc::new(MemLock::default()));
     assert_eq!(l.lock(1, "o/r#a").await.unwrap(), LockOutcome::Acquired);
     assert_eq!(l.lock(1, "o/r#a").await.unwrap(), LockOutcome::AlreadyHeld);
     assert_eq!(l.backend.holder("o/r#a").await.unwrap(), Some(1));
@@ -36,11 +38,9 @@ async fn acquire_then_already_held() {
 
 #[tokio::test]
 async fn open_pr_holder_blocks_and_is_cached() {
-    let server = MockServer::start().await;
-    mock_pr(&server, 9, "open").await;
     let backend = Arc::new(MemLock::default());
     backend.lock(9, "o/r#a").await.unwrap();
-    let l = locker(&server, backend);
+    let (l, prs) = locker(&[], backend);
     assert_eq!(
         l.lock(1, "o/r#a").await.unwrap(),
         LockOutcome::HeldByOther(9)
@@ -50,24 +50,21 @@ async fn open_pr_holder_blocks_and_is_cached() {
         LockOutcome::HeldByOther(9)
     );
     // The PR state lookup is cached per holder.
-    assert_eq!(server.received_requests().await.unwrap().len(), 1);
+    assert_eq!(prs.lookups.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
 async fn closed_pr_holder_is_taken_over() {
-    let server = MockServer::start().await;
-    mock_pr(&server, 9, "closed").await;
     let backend = Arc::new(MemLock::default());
     backend.lock(9, "o/r#a").await.unwrap();
-    let l = locker(&server, backend);
+    let (l, _) = locker(&[9], backend);
     assert_eq!(l.lock(1, "o/r#a").await.unwrap(), LockOutcome::Acquired);
     assert_eq!(l.backend.holder("o/r#a").await.unwrap(), Some(1));
 }
 
 #[tokio::test]
 async fn unlock_only_by_holder_and_force() {
-    let server = MockServer::start().await;
-    let l = locker(&server, Arc::new(MemLock::default()));
+    let (l, _) = locker(&[], Arc::new(MemLock::default()));
     l.lock(1, "o/r#a").await.unwrap();
     assert!(!l.unlock(2, "o/r#a").await.unwrap());
     assert_eq!(l.backend.holder("o/r#a").await.unwrap(), Some(1));
@@ -136,9 +133,6 @@ async fn from_env_selection() {
 
 #[tokio::test]
 async fn status_and_held_by() {
-    let server = MockServer::start().await;
-    mock_pr(&server, 2, "open").await;
-    mock_pr(&server, 3, "closed").await;
     let mem = Arc::new(MemLock::holding(&[
         ("o/r#a", 1),
         ("o/r#b", 2),
@@ -146,7 +140,7 @@ async fn status_and_held_by() {
         ("o/r#d", 1),
         ("x/y#a", 1),
     ]));
-    let l = locker(&server, mem.clone());
+    let (l, _) = locker(&[3], mem.clone());
     assert_eq!(l.status(1, "o/r#a").await.unwrap(), HolderStatus::Ours);
     assert_eq!(l.status(1, "o/r#b").await.unwrap(), HolderStatus::Other(2));
     // Held by a closed PR: free for the taking.

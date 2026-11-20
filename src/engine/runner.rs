@@ -18,12 +18,6 @@ impl IacTool {
             IacTool::OpenTofu => "tofu",
         }
     }
-    pub fn display(&self) -> &'static str {
-        match self {
-            IacTool::Terraform => "Terraform",
-            IacTool::OpenTofu => "OpenTofu",
-        }
-    }
 }
 
 /// Result of one subprocess invocation.

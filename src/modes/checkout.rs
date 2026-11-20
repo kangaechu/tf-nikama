@@ -246,9 +246,9 @@ mod tests {
 
     #[tokio::test]
     async fn pr_run_refuses_to_plan_or_apply_a_checkout_mislabelled_as_new_head() {
-        use crate::cli::Env;
         use crate::config::load_from_str;
         use crate::github::{GithubClient, GithubContext};
+        use crate::modes::Env;
         use serde_json::json;
         use std::sync::Arc;
         use wiremock::matchers::{method, path};

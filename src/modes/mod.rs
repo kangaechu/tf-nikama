@@ -8,6 +8,31 @@ pub mod run;
 #[cfg(test)]
 mod tests;
 
+use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::sync::Mutex;
+
+/// Runtime environment shared by the modes, built by the CLI.
+pub struct Env {
+    pub repo_root: PathBuf,
+    pub work_root: PathBuf,
+    pub max_parallel: Option<usize>,
+    pub serialize_init: bool,
+    /// Terraform CLI configuration enforcing the provider allowlist, if any.
+    pub cli_config: Option<String>,
+}
+
+impl Env {
+    /// Mutex used to serialise `terraform init` when a plugin cache is in use.
+    pub fn init_lock(&self) -> Option<Arc<Mutex<()>>> {
+        if self.serialize_init {
+            Some(Arc::new(Mutex::new(())))
+        } else {
+            None
+        }
+    }
+}
+
 /// Process exit codes (see the README).
 pub mod exit {
     pub const OK: i32 = 0;
@@ -19,4 +44,13 @@ pub mod exit {
     pub const COMMAND: i32 = 7;
     pub const JOB_FAILED: i32 = 8;
     pub const NO_CI: i32 = 10;
+}
+
+/// The lock layer asks only whether a pull request is closed; answer from
+/// the GitHub API.
+#[async_trait::async_trait]
+impl crate::lock::PrState for crate::github::GithubClient {
+    async fn is_closed(&self, pr: u64) -> anyhow::Result<bool> {
+        Ok(self.get_pr(pr).await?.is_closed())
+    }
 }

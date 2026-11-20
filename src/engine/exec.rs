@@ -14,7 +14,9 @@ use std::process::Stdio;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+/// Per-step record kept for diagnostics and tests.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct StepLog {
     pub step: String,
     pub exit_code: i32,
@@ -42,9 +44,11 @@ impl std::error::Error for ExecError {}
 pub struct PlanResult {
     pub summary: PlanSummary,
     pub plan_text: String,
+    #[allow(dead_code)] // kept for diagnostics and tests
     pub plan_json: String,
     pub plan_file: PathBuf,
     pub additional_output: Option<String>,
+    #[allow(dead_code)] // kept for diagnostics
     pub steps: Vec<StepLog>,
 }
 
@@ -60,6 +64,7 @@ pub struct ApplyResult {
     /// Resource counts when parseable.
     pub summary: Option<ApplySummary>,
     pub additional_output: Option<String>,
+    #[allow(dead_code)] // kept for diagnostics
     pub steps: Vec<StepLog>,
     /// Plan produced immediately before this apply when no stored plan was
     /// available (plan storage not configured). `None` when the apply used a

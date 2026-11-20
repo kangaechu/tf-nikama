@@ -1,7 +1,7 @@
 //! Shared job execution: parallel plans, level-ordered applies.
 
-use crate::aws_auth::populate_job_credentials;
 use crate::config::{Config, OnFailure};
+use crate::engine::aws_auth::populate_job_credentials;
 use crate::engine::{plan_summary_table, ApplyResult, Command, Job, JobExecutor, PlanResult};
 use crate::lock::{LockOutcome, PrLocker};
 use crate::report::{DetailKind, ReportWriter, RowStatus};
@@ -78,6 +78,7 @@ pub enum Outcome {
     },
     Destroy(ApplyResult),
     Locked,
+    #[allow(dead_code)] // whether a lock was actually released
     Unlocked(bool),
     Skipped(String),
 }
@@ -85,6 +86,7 @@ pub enum Outcome {
 #[derive(Debug)]
 pub struct JobResult {
     pub project: String,
+    #[allow(dead_code)] // kept for logging and tests
     pub command: Command,
     pub outcome: Result<Outcome, String>,
 }

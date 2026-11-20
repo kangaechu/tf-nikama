@@ -9,6 +9,7 @@ pub struct GithubContext {
     #[serde(default)]
     pub event: Value,
     #[serde(default)]
+    #[allow(dead_code)] // part of the event payload
     pub actor: String,
     #[serde(default)]
     pub repository: String,
@@ -19,6 +20,7 @@ pub struct GithubContext {
     #[serde(default = "default_server_url")]
     pub server_url: String,
     #[serde(default)]
+    #[allow(dead_code)] // part of the event payload
     pub sha: String,
 }
 
@@ -70,6 +72,7 @@ pub struct GitRef {
     #[serde(rename = "ref")]
     pub git_ref: String,
     #[serde(default)]
+    #[allow(dead_code)] // part of the event payload
     pub sha: String,
 }
 
@@ -83,6 +86,7 @@ pub struct PullRequest {
     pub head: GitRef,
     pub base: GitRef,
     #[serde(default)]
+    #[allow(dead_code)] // part of the event payload
     pub state: String,
 }
 

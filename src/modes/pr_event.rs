@@ -2,7 +2,7 @@
 
 use super::exit;
 use super::run::{run_by_levels, run_parallel, JobResult, Outcome, RunContext};
-use crate::cli::Env;
+use super::Env;
 use crate::config::{CommentMode, Config, LockMode};
 use crate::engine::{Command, Job};
 use crate::github::comment_cmd::help_text;
@@ -11,7 +11,9 @@ use crate::github::events::{
 };
 use crate::github::{parse_comment, CommentVerb, GithubClient, GithubContext};
 use crate::lock::{HolderStatus, LockOutcome, PrLocker};
+use crate::report::writer::ReportWriterTask;
 use crate::report::{ReportWriter, RowStatus, RunReport};
+use crate::storage::PlanStorage;
 use std::sync::Arc;
 
 pub(super) struct Trigger {
@@ -39,70 +41,19 @@ pub(super) struct Trigger {
 }
 
 pub async fn run(env: &Env, config: Arc<Config>, ctx: &GithubContext, github: GithubClient) -> i32 {
-    let trigger = match build_trigger(&config, ctx, &github).await {
+    let mut trigger = match build_trigger(&config, ctx, &github).await {
         Ok(Some(t)) => t,
         Ok(None) => return exit::OK,
         Err(code) => return code,
     };
     if trigger.jobs.is_empty() {
-        tracing::info!("no jobs to run");
-        // A required `digger/plan` or `digger/apply` check must not stay
-        // missing (or keep an older failure) just because this commit
-        // changes no infrastructure. When projects *are* impacted and this
-        // event merely ran nothing for them (a selector matching none of
-        // them, for instance), the checks are left as they are: nothing was
-        // planned or applied, so nothing may report success.
-        if trigger.expects_plan_or_apply && trigger.impacted == 0 {
-            set_noop_statuses(
-                &github,
-                &trigger.head_sha,
-                "no impacted projects",
-                &ctx.run_url(),
-            )
-            .await;
-        }
-        let mut notes = trigger.notes.clone();
-        if trigger.release_all_locks {
-            // A PR that no longer impacts any project may still hold locks
-            // from earlier commits; release them on close / unlock.
-            match sweep_locks_from_env(&config, &github, trigger.pr_number, &ctx.repository, &[])
-                .await
-            {
-                Ok(released) => notes.extend(released_notes(&released)),
-                Err(e) => notes.push(format!("could not release remaining locks: {}", e)),
-            }
-        }
-        if !notes.is_empty() {
-            let body = notes
-                .iter()
-                .map(|n| format!("- {}", n))
-                .collect::<Vec<_>>()
-                .join("\n");
-            let _ = github
-                .create_comment(trigger.pr_number, &format!("**nikama**\n\n{}", body))
-                .await;
-        }
-        return exit::OK;
+        return finish_without_jobs(&config, ctx, &github, &trigger).await;
     }
 
     if let Some(id) = trigger.comment_id {
         let _ = github.add_reaction(id, "eyes").await;
     }
-
-    // All jobs in one run share a command (PR events may mix e.g. plan+lock;
-    // the status context follows the "heaviest" command).
-    let main_command = trigger
-        .jobs
-        .iter()
-        .map(|j| j.command)
-        .max_by_key(|c| match c {
-            Command::Destroy => 4,
-            Command::Apply => 3,
-            Command::Plan => 2,
-            Command::Lock => 1,
-            Command::Unlock => 0,
-        })
-        .unwrap_or(Command::Plan);
+    let main_command = main_command(&trigger.jobs);
 
     let pr = match github.get_pr(trigger.pr_number).await {
         Ok(p) => p,
@@ -112,108 +63,25 @@ pub async fn run(env: &Env, config: Arc<Config>, ctx: &GithubContext, github: Gi
         }
     };
 
-    // Report + status.
-    let marker = match config.comment.mode {
-        CommentMode::Latest => "<!-- nikama:latest -->".to_string(),
-        _ => format!(
-            "<!-- nikama:run={}:attempt={} -->",
-            ctx.run_id, ctx.run_attempt
-        ),
-    };
-    let mut report = RunReport::new(
-        config.timezone,
-        &marker,
-        main_command,
-        &ctx.run_url(),
-        config.comment.show_empty_plans,
-        config.wakeup_word(),
-    );
-    for j in &trigger.jobs {
-        report.row_mut(&j.project.name);
-    }
-    report.notes = trigger.notes.clone();
-    let (writer, writer_task) = ReportWriter::start(
-        github.clone(),
-        trigger.pr_number,
-        report,
-        config.comment.mode,
-    );
-
-    let status_context = main_command.status_context();
-    let _ = github
+    let mut reporter = RunReporter::start(&config, ctx, &github, &trigger, main_command, &pr);
+    reporter
         .set_status(
-            &pr.head_sha,
             "pending",
-            status_context,
             &format!("running {} project(s)", trigger.jobs.len()),
-            Some(&ctx.run_url()),
         )
         .await;
 
     // Validate before locks, approval checks or Terraform. Lock/unlock-only
     // runs must still work after a branch has changed or disappeared.
-    let verified_head = if trigger
-        .jobs
-        .iter()
-        .any(|j| matches!(j.command, Command::Plan | Command::Apply | Command::Destroy))
-    {
-        match super::checkout::verify_snapshot(
-            &env.repo_root,
-            &trigger.head_sha,
-            &pr,
-            config.wakeup_word(),
-        )
-        .await
-        {
-            Ok(head) => Some(head),
-            Err(reason) => {
-                tracing::error!(%reason, "checkout validation failed");
-                let detail = reason.clone();
-                writer.update(move |r| {
-                    r.notes.push(detail.clone());
-                    for row in r.rows.values_mut() {
-                        row.status = RowStatus::Failed;
-                        row.detail_kind = Some(crate::report::DetailKind::Error);
-                        row.detail = Some(detail.clone());
-                    }
-                });
-                writer.finish().await;
-                writer_task.join().await;
-                let _ = github
-                    .set_status(
-                        &pr.head_sha,
-                        "failure",
-                        status_context,
-                        "checkout does not match PR snapshot; rerun with a fresh checkout",
-                        Some(&ctx.run_url()),
-                    )
-                    .await;
-                return exit::JOB_FAILED;
-            }
-        }
-    } else {
-        None
+    let verified_head = match verify_checkout(env, &config, &trigger, &pr).await {
+        Ok(head) => head,
+        Err(abort) => return reporter.abort(abort).await,
     };
 
     // Locking (two-phase).
-    let locker = match crate::lock::from_env(config.pr_locks.enabled()).await {
-        Ok(backend) => Arc::new(PrLocker::new(backend, github.clone())),
-        Err(e) => {
-            tracing::error!(error = %e, "could not initialise lock provider");
-            writer.update(move |r| r.notes.push(format!("lock provider error: {}", e)));
-            writer.finish().await;
-            writer_task.join().await;
-            let _ = github
-                .set_status(
-                    &pr.head_sha,
-                    "failure",
-                    status_context,
-                    "lock provider error",
-                    Some(&ctx.run_url()),
-                )
-                .await;
-            return exit::LOCK_INIT;
-        }
+    let locker = match init_locker(&config, &github).await {
+        Ok(l) => l,
+        Err(abort) => return reporter.abort(abort).await,
     };
     let keep_locks: Vec<String> = trigger.jobs.iter().map(|j| j.lock_id()).collect();
     let no_lock_reason = no_lock_reason(&trigger, &config, &pr);
@@ -222,81 +90,24 @@ pub async fn run(env: &Env, config: Arc<Config>, ctx: &GithubContext, github: Gi
         (_, Some(_)) => PlanLocking::SkipAndRelease,
         (_, None) => PlanLocking::Take,
     };
-    let plan = acquire_locks(&locker, trigger.pr_number, trigger.jobs, plan_locking).await;
-    let lock_failed = plan.failed;
-    if let Some(reason) = no_lock_reason {
-        let mut notes = vec![format!(
-            "planned without taking project locks ({}); `nikama apply` takes them as usual",
-            reason
-        )];
-        notes.extend(
-            plan.released
-                .iter()
-                .map(|p| format!("released lock of `{}` (planned without lock)", p)),
-        );
-        writer.update(move |r| r.notes.extend(notes));
-    }
-    for (name, status, detail) in plan.rows {
-        writer.update(move |r| {
-            let row = r.row_mut(&name);
-            row.status = status;
-            if let Some(d) = detail {
-                row.detail_kind = Some(crate::report::DetailKind::Error);
-                row.detail = Some(d);
-            }
-        });
-    }
-    let runnable = plan.runnable;
+    let jobs = std::mem::take(&mut trigger.jobs);
+    let plan = acquire_locks(&locker, trigger.pr_number, jobs, plan_locking).await;
+    report_lock_plan(&reporter.writer, &plan, no_lock_reason);
+    let LockPlan {
+        runnable,
+        taken,
+        failed: lock_failed,
+        ..
+    } = plan;
 
     // Apply preconditions.
-    let has_apply = runnable
-        .iter()
-        .any(|j| matches!(j.command, Command::Apply | Command::Destroy));
-    if has_apply {
-        if let Err(reason) = apply_allowed(&github, &pr, &runnable).await {
-            tracing::error!(%reason, "apply not allowed");
-            let r2 = reason.clone();
-            writer.update(move |r| {
-                r.notes.push(format!("apply not allowed: {}", r2));
-                for row in r.rows.values_mut() {
-                    if row.status == RowStatus::Pending {
-                        row.status = RowStatus::Skipped("apply not allowed".into());
-                    }
-                }
-            });
-            writer.finish().await;
-            writer_task.join().await;
-            let _ = github
-                .set_status(
-                    &pr.head_sha,
-                    "failure",
-                    status_context,
-                    &reason,
-                    Some(&ctx.run_url()),
-                )
-                .await;
-            return exit::JOB_FAILED;
-        }
+    if let Err(abort) = check_apply_allowed(&github, &pr, &runnable).await {
+        return reporter.abort(abort).await;
     }
 
-    let storage = match crate::storage::from_env().await {
+    let storage = match init_storage().await {
         Ok(s) => s,
-        Err(e) => {
-            tracing::error!(error = %e, "could not initialise plan storage");
-            writer.update(move |r| r.notes.push(format!("plan storage error: {}", e)));
-            writer.finish().await;
-            writer_task.join().await;
-            let _ = github
-                .set_status(
-                    &pr.head_sha,
-                    "failure",
-                    status_context,
-                    "plan storage error",
-                    Some(&ctx.run_url()),
-                )
-                .await;
-            return exit::INIT;
-        }
+        Err(abort) => return reporter.abort(abort).await,
     };
 
     let run_ctx = Arc::new(RunContext {
@@ -306,103 +117,41 @@ pub async fn run(env: &Env, config: Arc<Config>, ctx: &GithubContext, github: Gi
         init_lock: env.init_lock(),
         storage,
         locker: Some(locker.clone()),
-        writer: Some(writer.clone()),
+        writer: Some(reporter.writer.clone()),
         max_parallel: env.max_parallel.unwrap_or(config.concurrency.max_parallel),
         head_sha: verified_head,
         cli_config: env.cli_config.clone(),
     });
-
-    let (serial, parallel): (Vec<Job>, Vec<Job>) = runnable
-        .into_iter()
-        .partition(|j| matches!(j.command, Command::Apply | Command::Destroy));
-    let mut results: Vec<JobResult> = run_parallel(run_ctx.clone(), parallel).await;
-    if !serial.is_empty() {
-        results.extend(
-            run_by_levels(
-                run_ctx.clone(),
-                serial,
-                config.concurrency.apply_parallelism,
-            )
-            .await,
-        );
-    }
+    let results = run_jobs(run_ctx.clone(), runnable, &config).await;
 
     // A plan without changes needs no lock: give back what this run took.
     if plan_locking == PlanLocking::Take {
-        let released =
-            release_no_change_locks(&locker, trigger.pr_number, &results, &plan.taken).await;
-        if !released.is_empty() {
-            let notes: Vec<String> = released
-                .iter()
-                .map(|p| format!("released lock of `{}` (plan has no changes)", p))
-                .collect();
-            writer.update(move |r| r.notes.extend(notes));
-        }
+        give_back_no_change_locks(
+            &locker,
+            trigger.pr_number,
+            &results,
+            &taken,
+            &reporter.writer,
+        )
+        .await;
     }
-
     if trigger.release_all_locks {
-        match sweep_locks(
+        sweep_remaining_locks(
             &locker,
             run_ctx.storage.as_ref(),
             trigger.pr_number,
             &ctx.repository,
             &keep_locks,
+            &reporter.writer,
         )
-        .await
-        {
-            Ok(released) => {
-                let notes = released_notes(&released);
-                if !notes.is_empty() {
-                    writer.update(move |r| r.notes.extend(notes));
-                }
-            }
-            Err(e) => {
-                let msg = format!("could not release remaining locks: {}", e);
-                writer.update(move |r| r.notes.push(msg));
-            }
-        }
+        .await;
     }
 
-    writer.finish().await;
-    writer_task.join().await;
+    reporter.finish().await;
 
-    let failed = lock_failed || results.iter().any(|r| !r.is_ok());
-    // An apply job that found nothing to apply counts as applied: the PR is
-    // in the state it describes, which is what auto-merge is about.
-    let applied = results
-        .iter()
-        .filter(|r| {
-            matches!(
-                r.outcome,
-                Ok(Outcome::Apply(_))
-                    | Ok(Outcome::ApplyNoChanges {
-                        targeted: false,
-                        ..
-                    })
-            )
-        })
-        .count();
-    // `digger/apply` is a statement about the commit as a whole, so a run
-    // that applied only some of the impacted projects (`-p` / `-d`) leaves
-    // it pending rather than passing.
-    let partial_apply = main_command == Command::Apply && !trigger.covers_all_impacted;
-    let mut description = summarize(&results, lock_failed);
-    let state = if failed {
-        "failure"
-    } else if partial_apply {
-        description.push_str("; some impacted projects were not applied");
-        "pending"
-    } else {
-        "success"
-    };
-    let _ = github
-        .set_status(
-            &pr.head_sha,
-            state,
-            status_context,
-            &description,
-            Some(&ctx.run_url()),
-        )
+    let outcome = run_outcome(&results, lock_failed, main_command, &trigger);
+    reporter
+        .set_status(outcome.state, &outcome.description)
         .await;
 
     // Nothing to apply: let a required `digger/apply` check pass. When any
@@ -426,14 +175,412 @@ pub async fn run(env: &Env, config: Arc<Config>, ctx: &GithubContext, github: Gi
 
     write_outputs(trigger.pr_number);
 
-    if !failed && applied > 0 && config.auto_merge && trigger.covers_all_impacted {
+    if !outcome.failed && outcome.applied > 0 && config.auto_merge && trigger.covers_all_impacted {
         auto_merge(&github, &config, trigger.pr_number).await;
     }
 
-    if failed {
+    if outcome.failed {
         exit::JOB_FAILED
     } else {
         exit::OK
+    }
+}
+
+/// An event that produced no jobs: keep required checks green when nothing
+/// is impacted, release leftover locks on close / unlock, and tell the PR
+/// what happened.
+async fn finish_without_jobs(
+    config: &Config,
+    ctx: &GithubContext,
+    github: &GithubClient,
+    trigger: &Trigger,
+) -> i32 {
+    tracing::info!("no jobs to run");
+    // A required `digger/plan` or `digger/apply` check must not stay
+    // missing (or keep an older failure) just because this commit
+    // changes no infrastructure. When projects *are* impacted and this
+    // event merely ran nothing for them (a selector matching none of
+    // them, for instance), the checks are left as they are: nothing was
+    // planned or applied, so nothing may report success.
+    if trigger.expects_plan_or_apply && trigger.impacted == 0 {
+        set_noop_statuses(
+            github,
+            &trigger.head_sha,
+            "no impacted projects",
+            &ctx.run_url(),
+        )
+        .await;
+    }
+    let mut notes = trigger.notes.clone();
+    if trigger.release_all_locks {
+        // A PR that no longer impacts any project may still hold locks
+        // from earlier commits; release them on close / unlock.
+        match sweep_locks_from_env(config, github, trigger.pr_number, &ctx.repository, &[]).await {
+            Ok(released) => notes.extend(released_notes(&released)),
+            Err(e) => notes.push(format!("could not release remaining locks: {}", e)),
+        }
+    }
+    if !notes.is_empty() {
+        let body = notes
+            .iter()
+            .map(|n| format!("- {}", n))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let _ = github
+            .create_comment(trigger.pr_number, &format!("**nikama**\n\n{}", body))
+            .await;
+    }
+    exit::OK
+}
+
+/// All jobs in one run share a command (PR events may mix e.g. plan+lock;
+/// the status context follows the "heaviest" command).
+fn main_command(jobs: &[Job]) -> Command {
+    jobs.iter()
+        .map(|j| j.command)
+        .max_by_key(|c| match c {
+            Command::Destroy => 4,
+            Command::Apply => 3,
+            Command::Plan => 2,
+            Command::Lock => 1,
+            Command::Unlock => 0,
+        })
+        .unwrap_or(Command::Plan)
+}
+
+/// A run that stops before its jobs ran: what to add to the report, the
+/// commit status description, and the exit code.
+struct Abort {
+    note: Box<dyn FnOnce(&mut RunReport) + Send + 'static>,
+    status: String,
+    code: i32,
+}
+
+impl Abort {
+    fn new(
+        code: i32,
+        status: impl Into<String>,
+        note: impl FnOnce(&mut RunReport) + Send + 'static,
+    ) -> Self {
+        Self {
+            note: Box::new(note),
+            status: status.into(),
+            code,
+        }
+    }
+}
+
+/// The PR comment and the commit status of one run.
+struct RunReporter<'a> {
+    writer: ReportWriter,
+    task: Option<ReportWriterTask>,
+    github: &'a GithubClient,
+    head_sha: String,
+    status_context: &'static str,
+    run_url: String,
+}
+
+impl<'a> RunReporter<'a> {
+    fn start(
+        config: &Config,
+        ctx: &GithubContext,
+        github: &'a GithubClient,
+        trigger: &Trigger,
+        main_command: Command,
+        pr: &crate::github::PrInfo,
+    ) -> Self {
+        let marker = match config.comment.mode {
+            CommentMode::Latest => "<!-- nikama:latest -->".to_string(),
+            _ => format!(
+                "<!-- nikama:run={}:attempt={} -->",
+                ctx.run_id, ctx.run_attempt
+            ),
+        };
+        let mut report = RunReport::new(
+            config.timezone,
+            &marker,
+            main_command,
+            &ctx.run_url(),
+            config.comment.show_empty_plans,
+            config.wakeup_word(),
+        );
+        for j in &trigger.jobs {
+            report.row_mut(&j.project.name);
+        }
+        report.notes = trigger.notes.clone();
+        let (writer, task) = ReportWriter::start(
+            github.clone(),
+            trigger.pr_number,
+            report,
+            config.comment.mode,
+        );
+        Self {
+            writer,
+            task: Some(task),
+            github,
+            head_sha: pr.head_sha.clone(),
+            status_context: main_command.status_context(),
+            run_url: ctx.run_url(),
+        }
+    }
+
+    async fn set_status(&self, state: &str, description: &str) {
+        let _ = self
+            .github
+            .set_status(
+                &self.head_sha,
+                state,
+                self.status_context,
+                description,
+                Some(&self.run_url),
+            )
+            .await;
+    }
+
+    /// Publish the pending report changes and stop the writer.
+    async fn finish(&mut self) {
+        self.writer.finish().await;
+        if let Some(task) = self.task.take() {
+            task.join().await;
+        }
+    }
+
+    /// Record `abort` on the report and the commit status; returns its exit code.
+    async fn abort(mut self, abort: Abort) -> i32 {
+        self.writer.update(abort.note);
+        self.finish().await;
+        self.set_status("failure", &abort.status).await;
+        abort.code
+    }
+}
+
+/// Bind the run to the checkout when it will plan or apply. Returns the
+/// verified head commit, or `None` for lock / unlock-only runs.
+async fn verify_checkout(
+    env: &Env,
+    config: &Config,
+    trigger: &Trigger,
+    pr: &crate::github::PrInfo,
+) -> Result<Option<String>, Abort> {
+    if !trigger
+        .jobs
+        .iter()
+        .any(|j| matches!(j.command, Command::Plan | Command::Apply | Command::Destroy))
+    {
+        return Ok(None);
+    }
+    match super::checkout::verify_snapshot(
+        &env.repo_root,
+        &trigger.head_sha,
+        pr,
+        config.wakeup_word(),
+    )
+    .await
+    {
+        Ok(head) => Ok(Some(head)),
+        Err(reason) => {
+            tracing::error!(%reason, "checkout validation failed");
+            Err(Abort::new(
+                exit::JOB_FAILED,
+                "checkout does not match PR snapshot; rerun with a fresh checkout",
+                move |r| {
+                    r.notes.push(reason.clone());
+                    for row in r.rows.values_mut() {
+                        row.status = RowStatus::Failed;
+                        row.detail_kind = Some(crate::report::DetailKind::Error);
+                        row.detail = Some(reason.clone());
+                    }
+                },
+            ))
+        }
+    }
+}
+
+async fn init_locker(config: &Config, github: &GithubClient) -> Result<Arc<PrLocker>, Abort> {
+    match crate::lock::from_env(config.pr_locks.enabled()).await {
+        Ok(backend) => Ok(Arc::new(PrLocker::new(backend, Arc::new(github.clone())))),
+        Err(e) => {
+            tracing::error!(error = %e, "could not initialise lock provider");
+            Err(Abort::new(
+                exit::LOCK_INIT,
+                "lock provider error",
+                move |r| r.notes.push(format!("lock provider error: {}", e)),
+            ))
+        }
+    }
+}
+
+/// Show the lock phase on the report: the no-lock note and the rows of the
+/// jobs that will not run.
+fn report_lock_plan(writer: &ReportWriter, plan: &LockPlan, no_lock_reason: Option<String>) {
+    if let Some(reason) = no_lock_reason {
+        let mut notes = vec![format!(
+            "planned without taking project locks ({}); `nikama apply` takes them as usual",
+            reason
+        )];
+        notes.extend(
+            plan.released
+                .iter()
+                .map(|p| format!("released lock of `{}` (planned without lock)", p)),
+        );
+        writer.update(move |r| r.notes.extend(notes));
+    }
+    for (name, status, detail) in plan.rows.clone() {
+        writer.update(move |r| {
+            let row = r.row_mut(&name);
+            row.status = status;
+            if let Some(d) = detail {
+                row.detail_kind = Some(crate::report::DetailKind::Error);
+                row.detail = Some(d);
+            }
+        });
+    }
+}
+
+async fn check_apply_allowed(
+    github: &GithubClient,
+    pr: &crate::github::PrInfo,
+    runnable: &[Job],
+) -> Result<(), Abort> {
+    let has_apply = runnable
+        .iter()
+        .any(|j| matches!(j.command, Command::Apply | Command::Destroy));
+    if !has_apply {
+        return Ok(());
+    }
+    match apply_allowed(github, pr, runnable).await {
+        Ok(()) => Ok(()),
+        Err(reason) => {
+            tracing::error!(%reason, "apply not allowed");
+            let note = format!("apply not allowed: {}", reason);
+            Err(Abort::new(exit::JOB_FAILED, reason, move |r| {
+                r.notes.push(note);
+                for row in r.rows.values_mut() {
+                    if row.status == RowStatus::Pending {
+                        row.status = RowStatus::Skipped("apply not allowed".into());
+                    }
+                }
+            }))
+        }
+    }
+}
+
+async fn init_storage() -> Result<Arc<dyn PlanStorage>, Abort> {
+    match crate::storage::from_env().await {
+        Ok(s) => Ok(s),
+        Err(e) => {
+            tracing::error!(error = %e, "could not initialise plan storage");
+            Err(Abort::new(exit::INIT, "plan storage error", move |r| {
+                r.notes.push(format!("plan storage error: {}", e))
+            }))
+        }
+    }
+}
+
+/// Plans in parallel, then applies / destroys by dependency level.
+async fn run_jobs(run_ctx: Arc<RunContext>, runnable: Vec<Job>, config: &Config) -> Vec<JobResult> {
+    let (serial, parallel): (Vec<Job>, Vec<Job>) = runnable
+        .into_iter()
+        .partition(|j| matches!(j.command, Command::Apply | Command::Destroy));
+    let mut results: Vec<JobResult> = run_parallel(run_ctx.clone(), parallel).await;
+    if !serial.is_empty() {
+        results.extend(run_by_levels(run_ctx, serial, config.concurrency.apply_parallelism).await);
+    }
+    results
+}
+
+/// Release the locks this run took for plans that turned out empty.
+async fn give_back_no_change_locks(
+    locker: &PrLocker,
+    pr_number: u64,
+    results: &[JobResult],
+    taken: &[(String, String)],
+    writer: &ReportWriter,
+) {
+    let released = release_no_change_locks(locker, pr_number, results, taken).await;
+    if !released.is_empty() {
+        let notes: Vec<String> = released
+            .iter()
+            .map(|p| format!("released lock of `{}` (plan has no changes)", p))
+            .collect();
+        writer.update(move |r| r.notes.extend(notes));
+    }
+}
+
+/// Release every lock the PR still holds except `keep_locks` (close / merge /
+/// bare unlock).
+async fn sweep_remaining_locks(
+    locker: &PrLocker,
+    storage: &dyn PlanStorage,
+    pr_number: u64,
+    repository: &str,
+    keep_locks: &[String],
+    writer: &ReportWriter,
+) {
+    match sweep_locks(locker, storage, pr_number, repository, keep_locks).await {
+        Ok(released) => {
+            let notes = released_notes(&released);
+            if !notes.is_empty() {
+                writer.update(move |r| r.notes.extend(notes));
+            }
+        }
+        Err(e) => {
+            let msg = format!("could not release remaining locks: {}", e);
+            writer.update(move |r| r.notes.push(msg));
+        }
+    }
+}
+
+/// What the run amounts to once every job has finished.
+struct RunOutcome {
+    failed: bool,
+    /// Number of projects applied (or found with nothing to apply).
+    applied: usize,
+    /// Commit status state and description for the main command.
+    state: &'static str,
+    description: String,
+}
+
+fn run_outcome(
+    results: &[JobResult],
+    lock_failed: bool,
+    main_command: Command,
+    trigger: &Trigger,
+) -> RunOutcome {
+    let failed = lock_failed || results.iter().any(|r| !r.is_ok());
+    // An apply job that found nothing to apply counts as applied: the PR is
+    // in the state it describes, which is what auto-merge is about.
+    let applied = results
+        .iter()
+        .filter(|r| {
+            matches!(
+                r.outcome,
+                Ok(Outcome::Apply(_))
+                    | Ok(Outcome::ApplyNoChanges {
+                        targeted: false,
+                        ..
+                    })
+            )
+        })
+        .count();
+    // `digger/apply` is a statement about the commit as a whole, so a run
+    // that applied only some of the impacted projects (`-p` / `-d`) leaves
+    // it pending rather than passing.
+    let partial_apply = main_command == Command::Apply && !trigger.covers_all_impacted;
+    let mut description = summarize(results, lock_failed);
+    let state = if failed {
+        "failure"
+    } else if partial_apply {
+        description.push_str("; some impacted projects were not applied");
+        "pending"
+    } else {
+        "success"
+    };
+    RunOutcome {
+        failed,
+        applied,
+        state,
+        description,
     }
 }
 
@@ -500,207 +647,9 @@ pub(super) async fn build_trigger(
 ) -> Result<Option<Trigger>, i32> {
     match ctx.event_name.as_str() {
         "pull_request" | "pull_request_target" => {
-            let event = ctx.pull_request_event().map_err(|e| {
-                tracing::error!(error = %e, "could not parse pull_request event");
-                exit::CONTEXT
-            })?;
-            let selector = classify_pr_event(&event, config);
-            if let PrSelector::Ignore(reason) = &selector {
-                tracing::info!(%reason, "ignoring event");
-                return Ok(None);
-            }
-            let pr_number = event.pull_request.number;
-            let files = github.changed_files(pr_number).await.map_err(|e| {
-                tracing::error!(error = %e, "could not list changed files");
-                exit::EVENT
-            })?;
-            let impacted = crate::config::impacted_projects(
-                config,
-                &files,
-                Some(&event.pull_request.base.git_ref),
-            );
-            log_impacted(&impacted);
-            let jobs = jobs_for_pull_request(&event, config, &impacted, &selector);
-            let release_all_locks =
-                matches!(selector, PrSelector::Closed | PrSelector::CommitToDefault);
-            Ok(Some(Trigger {
-                pr_number,
-                jobs,
-                covers_all_impacted: true,
-                notes: vec![],
-                comment_id: None,
-                release_all_locks,
-                head_sha: event.pull_request.head.sha.clone(),
-                impacted: impacted.len(),
-                expects_plan_or_apply: selector == PrSelector::Pushed,
-                no_lock_flag: false,
-                extra_args: vec![],
-            }))
+            trigger_from_pull_request(config, ctx, github).await
         }
-        "issue_comment" => {
-            let event = ctx.issue_comment_event().map_err(|e| {
-                tracing::error!(error = %e, "could not parse issue_comment event");
-                exit::CONTEXT
-            })?;
-            if event.action != "created" {
-                tracing::info!(action = %event.action, "ignoring issue_comment action");
-                return Ok(None);
-            }
-            if event.issue.pull_request.is_none() {
-                tracing::info!("comment is on an issue, not a pull request; ignoring");
-                return Ok(None);
-            }
-            let Some(parsed) = parse_comment(&event.comment.body, &config.wakeup_words) else {
-                tracing::info!("comment is not a nikama command; ignoring");
-                return Ok(None);
-            };
-            let pr_number = event.issue.number;
-            let cmd = match parsed {
-                Ok(c) => c,
-                Err(e) => {
-                    let _ = github
-                        .create_comment(
-                            pr_number,
-                            &format!("**nikama**: {}\n\n{}", e, help_text(&config.wakeup_words)),
-                        )
-                        .await;
-                    return Err(exit::COMMAND);
-                }
-            };
-            let command = match cmd.verb {
-                CommentVerb::Help => {
-                    let _ = github
-                        .create_comment(pr_number, &help_text(&config.wakeup_words))
-                        .await;
-                    return Ok(None);
-                }
-                CommentVerb::Run(Command::Destroy) => {
-                    let _ = github
-                        .create_comment(
-                            pr_number,
-                            &format!(
-                                "**nikama**: `destroy` cannot be run from a PR comment. Use a manually dispatched workflow with `mode: manual` and `command: {} destroy`.",
-                                config.wakeup_word()
-                            ),
-                        )
-                        .await;
-                    return Err(exit::COMMAND);
-                }
-                CommentVerb::Run(c) => c,
-            };
-            // A run executes the pull request's `nikama.yml` and Terraform
-            // code with the workflow's credentials, so only users with write
-            // access may start one. `author_association` is not enough: a
-            // COLLABORATOR may be read-only.
-            let commenter = event.commenter();
-            let role = github.collaborator_role(commenter).await.map_err(|e| {
-                tracing::error!(error = %e, user = commenter, "could not check the commenter's repository permission");
-                exit::EVENT
-            })?;
-            if !has_write_access(&role) {
-                tracing::warn!(user = commenter, %role, command = %command, "ignoring command from a user without write access");
-                let _ = github
-                    .create_comment(
-                        pr_number,
-                        &format!(
-                            "**nikama**: `{}` was not run: {} does not have write access to this repository.",
-                            command, commenter
-                        ),
-                    )
-                    .await;
-                return Ok(None);
-            }
-            if let Some(reason) = extra_args_rejection(
-                config,
-                command,
-                &cmd.extra_args,
-                crate::storage::configured(),
-            ) {
-                tracing::info!(command = %command, "rejecting extra arguments");
-                let _ = github
-                    .create_comment(pr_number, &format!("**nikama**: {}", reason))
-                    .await;
-                return Err(exit::COMMAND);
-            }
-            let pr = github.get_pr(pr_number).await.map_err(|e| {
-                tracing::error!(error = %e, "could not fetch pull request");
-                exit::EVENT
-            })?;
-            if let Some(reason) = closed_pr_rejection(&pr, command) {
-                tracing::info!(command = %command, merged = pr.merged, "rejecting command on a closed pull request");
-                let _ = github
-                    .create_comment(pr_number, &format!("**nikama**: {}", reason))
-                    .await;
-                return Ok(None);
-            }
-            if let Some(reason) = draft_pr_rejection(&pr, command, config.allow_draft_prs) {
-                tracing::info!(command = %command, "rejecting command on a draft pull request");
-                let _ = github
-                    .create_comment(pr_number, &format!("**nikama**: {}", reason))
-                    .await;
-                return Ok(None);
-            }
-            let files = github.changed_files(pr_number).await.map_err(|e| {
-                tracing::error!(error = %e, "could not list changed files");
-                exit::EVENT
-            })?;
-            let impacted = crate::config::impacted_projects(config, &files, Some(&pr.base_ref));
-            log_impacted(&impacted);
-            let (selected, unmatched) = select_projects(&impacted, &cmd.projects, &cmd.dirs);
-            let mut notes = Vec::new();
-            if !unmatched.is_empty() {
-                notes.push(format!(
-                    "selector(s) matched no impacted project: {}",
-                    unmatched.join(", ")
-                ));
-                notes.extend(branch_filter_notes(
-                    config,
-                    &cmd.projects,
-                    &cmd.dirs,
-                    &pr.base_ref,
-                ));
-            }
-            if impacted.is_empty() {
-                notes.push("no projects are impacted by this pull request".into());
-            }
-            let covers_all = selected.len() == impacted.len();
-            let mut jobs = jobs_for_comment(&event, config, &selected, command, &pr.head_ref);
-            if !cmd.extra_args.is_empty() {
-                for j in &mut jobs {
-                    j.extra_args = cmd.extra_args.clone();
-                }
-                notes.push(format!(
-                    "`{}` runs with extra arguments `{}`{}",
-                    command,
-                    cmd.extra_args.join(" "),
-                    if command == Command::Plan && crate::storage::configured() {
-                        format!(
-                            "; `{} apply` applies this plan as it is",
-                            config.wakeup_word()
-                        )
-                    } else {
-                        String::new()
-                    }
-                ));
-            }
-            // A bare `nikama unlock` releases everything this PR holds; with
-            // `-p` / `-d` only the selected projects are touched.
-            let release_all_locks =
-                command == Command::Unlock && cmd.projects.is_empty() && cmd.dirs.is_empty();
-            Ok(Some(Trigger {
-                pr_number,
-                jobs,
-                covers_all_impacted: covers_all,
-                notes,
-                comment_id: Some(event.comment.id),
-                release_all_locks,
-                head_sha: pr.head_sha.clone(),
-                impacted: impacted.len(),
-                expects_plan_or_apply: matches!(command, Command::Plan | Command::Apply),
-                no_lock_flag: cmd.no_lock,
-                extra_args: cmd.extra_args,
-            }))
-        }
+        "issue_comment" => trigger_from_comment(config, ctx, github).await,
         "merge_group" => {
             tracing::info!("ignoring merge_group event");
             Ok(None)
@@ -722,6 +671,218 @@ pub(super) async fn build_trigger(
             Ok(None)
         }
     }
+}
+
+/// Jobs for a `pull_request` event: plan the impacted projects on push,
+/// release locks on close / merge.
+async fn trigger_from_pull_request(
+    config: &Config,
+    ctx: &GithubContext,
+    github: &GithubClient,
+) -> Result<Option<Trigger>, i32> {
+    let event = ctx.pull_request_event().map_err(|e| {
+        tracing::error!(error = %e, "could not parse pull_request event");
+        exit::CONTEXT
+    })?;
+    let selector = classify_pr_event(&event, config);
+    if let PrSelector::Ignore(reason) = &selector {
+        tracing::info!(%reason, "ignoring event");
+        return Ok(None);
+    }
+    let pr_number = event.pull_request.number;
+    let files = github.changed_files(pr_number).await.map_err(|e| {
+        tracing::error!(error = %e, "could not list changed files");
+        exit::EVENT
+    })?;
+    let impacted =
+        crate::config::impacted_projects(config, &files, Some(&event.pull_request.base.git_ref));
+    log_impacted(&impacted);
+    let jobs = jobs_for_pull_request(&event, config, &impacted, &selector);
+    let release_all_locks = matches!(selector, PrSelector::Closed | PrSelector::CommitToDefault);
+    Ok(Some(Trigger {
+        pr_number,
+        jobs,
+        covers_all_impacted: true,
+        notes: vec![],
+        comment_id: None,
+        release_all_locks,
+        head_sha: event.pull_request.head.sha.clone(),
+        impacted: impacted.len(),
+        expects_plan_or_apply: selector == PrSelector::Pushed,
+        no_lock_flag: false,
+        extra_args: vec![],
+    }))
+}
+
+/// Jobs for a `nikama ...` comment, once the commenter and the state of
+/// the pull request allow the command.
+async fn trigger_from_comment(
+    config: &Config,
+    ctx: &GithubContext,
+    github: &GithubClient,
+) -> Result<Option<Trigger>, i32> {
+    let event = ctx.issue_comment_event().map_err(|e| {
+        tracing::error!(error = %e, "could not parse issue_comment event");
+        exit::CONTEXT
+    })?;
+    if event.action != "created" {
+        tracing::info!(action = %event.action, "ignoring issue_comment action");
+        return Ok(None);
+    }
+    if event.issue.pull_request.is_none() {
+        tracing::info!("comment is on an issue, not a pull request; ignoring");
+        return Ok(None);
+    }
+    let Some(parsed) = parse_comment(&event.comment.body, &config.wakeup_words) else {
+        tracing::info!("comment is not a nikama command; ignoring");
+        return Ok(None);
+    };
+    let pr_number = event.issue.number;
+    let cmd = match parsed {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = github
+                .create_comment(
+                    pr_number,
+                    &format!("**nikama**: {}\n\n{}", e, help_text(&config.wakeup_words)),
+                )
+                .await;
+            return Err(exit::COMMAND);
+        }
+    };
+    let command = match cmd.verb {
+        CommentVerb::Help => {
+            let _ = github
+                .create_comment(pr_number, &help_text(&config.wakeup_words))
+                .await;
+            return Ok(None);
+        }
+        CommentVerb::Run(Command::Destroy) => {
+            let _ = github
+                .create_comment(
+                    pr_number,
+                    &format!(
+                        "**nikama**: `destroy` cannot be run from a PR comment. Use a manually dispatched workflow with `mode: manual` and `command: {} destroy`.",
+                        config.wakeup_word()
+                    ),
+                )
+                .await;
+            return Err(exit::COMMAND);
+        }
+        CommentVerb::Run(c) => c,
+    };
+    // A run executes the pull request's `nikama.yml` and Terraform
+    // code with the workflow's credentials, so only users with write
+    // access may start one. `author_association` is not enough: a
+    // COLLABORATOR may be read-only.
+    let commenter = event.commenter();
+    let role = github.collaborator_role(commenter).await.map_err(|e| {
+        tracing::error!(error = %e, user = commenter, "could not check the commenter's repository permission");
+        exit::EVENT
+    })?;
+    if !has_write_access(&role) {
+        tracing::warn!(user = commenter, %role, command = %command, "ignoring command from a user without write access");
+        let _ = github
+            .create_comment(
+                pr_number,
+                &format!(
+                    "**nikama**: `{}` was not run: {} does not have write access to this repository.",
+                    command, commenter
+                ),
+            )
+            .await;
+        return Ok(None);
+    }
+    if let Some(reason) = extra_args_rejection(
+        config,
+        command,
+        &cmd.extra_args,
+        crate::storage::configured(),
+    ) {
+        tracing::info!(command = %command, "rejecting extra arguments");
+        let _ = github
+            .create_comment(pr_number, &format!("**nikama**: {}", reason))
+            .await;
+        return Err(exit::COMMAND);
+    }
+    let pr = github.get_pr(pr_number).await.map_err(|e| {
+        tracing::error!(error = %e, "could not fetch pull request");
+        exit::EVENT
+    })?;
+    if let Some(reason) = closed_pr_rejection(&pr, command) {
+        tracing::info!(command = %command, merged = pr.merged, "rejecting command on a closed pull request");
+        let _ = github
+            .create_comment(pr_number, &format!("**nikama**: {}", reason))
+            .await;
+        return Ok(None);
+    }
+    if let Some(reason) = draft_pr_rejection(&pr, command, config.allow_draft_prs) {
+        tracing::info!(command = %command, "rejecting command on a draft pull request");
+        let _ = github
+            .create_comment(pr_number, &format!("**nikama**: {}", reason))
+            .await;
+        return Ok(None);
+    }
+    let files = github.changed_files(pr_number).await.map_err(|e| {
+        tracing::error!(error = %e, "could not list changed files");
+        exit::EVENT
+    })?;
+    let impacted = crate::config::impacted_projects(config, &files, Some(&pr.base_ref));
+    log_impacted(&impacted);
+    let (selected, unmatched) = select_projects(&impacted, &cmd.projects, &cmd.dirs);
+    let mut notes = Vec::new();
+    if !unmatched.is_empty() {
+        notes.push(format!(
+            "selector(s) matched no impacted project: {}",
+            unmatched.join(", ")
+        ));
+        notes.extend(branch_filter_notes(
+            config,
+            &cmd.projects,
+            &cmd.dirs,
+            &pr.base_ref,
+        ));
+    }
+    if impacted.is_empty() {
+        notes.push("no projects are impacted by this pull request".into());
+    }
+    let covers_all = selected.len() == impacted.len();
+    let mut jobs = jobs_for_comment(&event, config, &selected, command, &pr.head_ref);
+    if !cmd.extra_args.is_empty() {
+        for j in &mut jobs {
+            j.extra_args = cmd.extra_args.clone();
+        }
+        notes.push(format!(
+            "`{}` runs with extra arguments `{}`{}",
+            command,
+            cmd.extra_args.join(" "),
+            if command == Command::Plan && crate::storage::configured() {
+                format!(
+                    "; `{} apply` applies this plan as it is",
+                    config.wakeup_word()
+                )
+            } else {
+                String::new()
+            }
+        ));
+    }
+    // A bare `nikama unlock` releases everything this PR holds; with
+    // `-p` / `-d` only the selected projects are touched.
+    let release_all_locks =
+        command == Command::Unlock && cmd.projects.is_empty() && cmd.dirs.is_empty();
+    Ok(Some(Trigger {
+        pr_number,
+        jobs,
+        covers_all_impacted: covers_all,
+        notes,
+        comment_id: Some(event.comment.id),
+        release_all_locks,
+        head_sha: pr.head_sha.clone(),
+        impacted: impacted.len(),
+        expects_plan_or_apply: matches!(command, Command::Plan | Command::Apply),
+        no_lock_flag: cmd.no_lock,
+        extra_args: cmd.extra_args,
+    }))
 }
 
 /// Result of the lock phase: which jobs may run and what to show for the rest.
@@ -1043,7 +1204,7 @@ async fn sweep_locks_from_env(
     keep: &[String],
 ) -> anyhow::Result<Vec<String>> {
     let backend = crate::lock::from_env(config.pr_locks.enabled()).await?;
-    let locker = PrLocker::new(backend, github.clone());
+    let locker = PrLocker::new(backend, Arc::new(github.clone()));
     let storage = crate::storage::from_env().await?;
     sweep_locks(&locker, storage.as_ref(), pr, namespace, keep).await
 }

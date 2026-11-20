@@ -4,16 +4,6 @@ use super::context::{IssueCommentEvent, PullRequestEvent};
 use crate::config::{Config, Project};
 use crate::engine::{Command, Job};
 
-/// What a `pull_request` event asks us to do.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PrAction {
-    Run {
-        commands: Vec<String>,
-        event_name: &'static str,
-    },
-    Ignore(String),
-}
-
 /// Decide which workflow commands a PR event maps to.
 /// `commands` are resolved per project because each workflow may differ; this
 /// returns the *selector* and the caller looks up the workflow.

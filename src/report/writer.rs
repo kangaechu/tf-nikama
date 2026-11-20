@@ -12,6 +12,7 @@ type Update = Box<dyn FnOnce(&mut RunReport) + Send + 'static>;
 
 enum Msg {
     Update(Update),
+    #[cfg(test)]
     Flush(oneshot::Sender<()>),
     /// Publish any pending changes and stop the writer task.
     Close(oneshot::Sender<()>),
@@ -57,6 +58,7 @@ impl ReportWriter {
     }
 
     /// Wait until every queued update has been published.
+    #[cfg(test)]
     pub async fn flush(&self) {
         let (tx, rx) = oneshot::channel();
         if self.tx.send(Msg::Flush(tx)).is_ok() {
@@ -287,6 +289,7 @@ async fn run(
                 f(&mut report);
                 dirty = true;
             }
+            #[cfg(test)]
             Some(Msg::Flush(tx)) => {
                 if dirty {
                     publisher.publish(&report).await;

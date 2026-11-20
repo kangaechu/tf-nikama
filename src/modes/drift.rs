@@ -2,7 +2,7 @@
 
 use super::exit;
 use super::run::{run_parallel, Outcome, RunContext};
-use crate::cli::Env;
+use super::Env;
 use crate::config::{matches_patterns, Config};
 use crate::engine::{Command, Job};
 use crate::github::GithubClient;
@@ -23,6 +23,7 @@ pub async fn run(
             return exit::JOB_FAILED;
         }
     };
+    tracing::info!(notifier = notifier.name(), "drift notifier");
     let block_filters: Vec<String> = crate::util::env_opt("INPUT_DIGGER_BLOCK_FILTERS")
         .map(|s| {
             s.split(',')

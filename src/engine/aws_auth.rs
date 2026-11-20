@@ -1,7 +1,7 @@
 //! Per-job AWS credentials: GitHub OIDC → STS / Cognito.
 
+use super::Job;
 use crate::config::{AwsCognitoOidc, AwsRoleToAssume};
-use crate::engine::Job;
 use aws_credential_types::Credentials;
 use std::collections::BTreeMap;
 

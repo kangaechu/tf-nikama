@@ -26,7 +26,9 @@ pub struct RawConfig {
     pub pr_locks: Option<BoolOrString>,
     pub allow_draft_prs: Option<bool>,
     pub no_lock_label: Option<String>,
+    #[allow(dead_code)] // accepted for digger.yml compatibility; not used
     pub git_timeout: Option<i64>,
+    #[allow(dead_code)] // accepted for digger.yml compatibility; not used
     pub telemetry: Option<bool>,
     #[serde(default)]
     pub drift_include_patterns: Vec<String>,

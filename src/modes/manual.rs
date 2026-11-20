@@ -2,7 +2,7 @@
 
 use super::exit;
 use super::run::{run_job, Outcome, RunContext};
-use crate::cli::Env;
+use super::Env;
 use crate::config::Config;
 use crate::engine::{plan_summary_table, Command, Job};
 use crate::storage::NoopPlanStorage;
