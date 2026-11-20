@@ -110,14 +110,6 @@ impl LockMode {
     pub fn enabled(self) -> bool {
         self != LockMode::Disabled
     }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            LockMode::OnPlan => "on_plan",
-            LockMode::OnApply => "on_apply",
-            LockMode::Disabled => "disabled",
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -177,6 +169,7 @@ pub struct CommentConfig {
     /// so the `REPORTING_STRATEGY` environment variable must not override it.
     pub mode_explicit: bool,
     pub show_empty_plans: ShowEmptyPlans,
+    #[allow(dead_code)] // parsed for compatibility; not implemented
     pub per_project_status: bool,
 }
 
@@ -216,6 +209,7 @@ pub struct Project {
     pub include_patterns: Vec<String>,
     pub exclude_patterns: Vec<String>,
     pub depends_on: Vec<String>,
+    #[allow(dead_code)] // parsed for compatibility; ordering uses depends_on
     pub layer: u32,
     pub alias: Option<String>,
     pub block_name: Option<String>,
@@ -228,6 +222,7 @@ pub struct Project {
     pub drift_exclude_patterns: Vec<String>,
     pub aws_role_to_assume: Option<AwsRoleToAssume>,
     pub aws_cognito_oidc: Option<AwsCognitoOidc>,
+    #[allow(dead_code)] // recorded for diagnostics
     pub generated: bool,
     /// Local module directories (repository-relative) this project uses,
     /// filled when `autoplan_modules` is on. Changes there impact the project.
@@ -235,10 +230,6 @@ pub struct Project {
 }
 
 impl Project {
-    pub fn display_name(&self) -> &str {
-        self.alias.as_deref().unwrap_or(&self.name)
-    }
-
     /// `true` when the project applies to a pull request into `base_branch`.
     /// `None` (no pull request: manual and drift runs) matches every project.
     pub fn matches_base_branch(&self, base_branch: Option<&str>) -> bool {
@@ -269,14 +260,6 @@ pub enum Step {
 impl Step {
     pub fn is_init(&self) -> bool {
         matches!(self, Step::Init { .. })
-    }
-    pub fn name(&self) -> &'static str {
-        match self {
-            Step::Init { .. } => "init",
-            Step::Plan { .. } => "plan",
-            Step::Apply { .. } => "apply",
-            Step::Run { .. } => "run",
-        }
     }
 }
 
@@ -390,6 +373,7 @@ pub struct Config {
     pub workflows: BTreeMap<String, Workflow>,
     pub dependency_mode: DependencyMode,
     pub on_failure: OnFailure,
+    #[allow(dead_code)] // parsed for compatibility; not implemented
     pub traverse_to_nested_projects: bool,
     pub auto_merge: bool,
     pub auto_merge_strategy: MergeStrategy,
@@ -409,6 +393,7 @@ pub struct Config {
     pub wakeup_words: Vec<String>,
     /// `autoplan_modules`: changes to referenced local modules impact the
     /// project (see `Project::module_dirs`).
+    #[allow(dead_code)] // parsed for compatibility; module discovery is always on
     pub autoplan_modules: bool,
     /// Patterns (`*` matches any run of characters) for arguments a comment
     /// may pass to `terraform plan` after `--`. Empty: feature off.

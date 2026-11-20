@@ -1,9 +1,5 @@
 //! nikama: backendless Terraform/OpenTofu PR automation for GitHub Actions.
 
-// The configuration and result models intentionally carry fields that are
-// parsed for compatibility but not read yet.
-#![allow(dead_code)]
-
 mod aws_auth;
 mod cli;
 mod config;

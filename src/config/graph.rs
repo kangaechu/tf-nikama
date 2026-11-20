@@ -67,6 +67,7 @@ impl DependencyGraph {
 
     /// Stable topological order of the given subset: dependencies first,
     /// ties broken by name.
+    #[cfg(test)]
     pub fn sorted(&self, names: &[String]) -> Vec<String> {
         self.levels(names).into_iter().flatten().collect()
     }

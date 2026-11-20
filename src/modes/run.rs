@@ -78,6 +78,7 @@ pub enum Outcome {
     },
     Destroy(ApplyResult),
     Locked,
+    #[allow(dead_code)] // whether a lock was actually released
     Unlocked(bool),
     Skipped(String),
 }
@@ -85,6 +86,7 @@ pub enum Outcome {
 #[derive(Debug)]
 pub struct JobResult {
     pub project: String,
+    #[allow(dead_code)] // kept for logging and tests
     pub command: Command,
     pub outcome: Result<Outcome, String>,
 }

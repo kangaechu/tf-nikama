@@ -23,6 +23,7 @@ pub async fn run(
             return exit::JOB_FAILED;
         }
     };
+    tracing::info!(notifier = notifier.name(), "drift notifier");
     let block_filters: Vec<String> = crate::util::env_opt("INPUT_DIGGER_BLOCK_FILTERS")
         .map(|s| {
             s.split(',')

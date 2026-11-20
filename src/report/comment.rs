@@ -39,10 +39,12 @@ impl RowStatus {
         }
     }
 
+    #[cfg(test)]
     pub fn is_failure(&self) -> bool {
         matches!(self, RowStatus::Failed | RowStatus::LockedByOther(_))
     }
 
+    #[cfg(test)]
     pub fn is_terminal(&self) -> bool {
         !matches!(self, RowStatus::Pending | RowStatus::Running)
     }
@@ -131,6 +133,7 @@ impl RunReport {
             .or_insert_with(|| ProjectRow::new(name))
     }
 
+    #[cfg(test)]
     pub fn any_failed(&self) -> bool {
         self.rows.values().any(|r| r.status.is_failure())
     }

@@ -105,6 +105,8 @@ pub trait PlanStorage: Send + Sync {
     async fn store(&self, key: &str, bytes: &[u8], meta: &PlanMeta) -> anyhow::Result<()>;
     async fn retrieve(&self, key: &str) -> anyhow::Result<Option<StoredPlan>>;
     async fn delete(&self, key: &str) -> anyhow::Result<()>;
+    /// Only the tests look at storage without retrieving the plan.
+    #[cfg(test)]
     async fn exists(&self, key: &str) -> anyhow::Result<bool>;
     fn name(&self) -> &'static str;
     fn is_noop(&self) -> bool {
@@ -126,6 +128,7 @@ impl PlanStorage for NoopPlanStorage {
     async fn delete(&self, _key: &str) -> anyhow::Result<()> {
         Ok(())
     }
+    #[cfg(test)]
     async fn exists(&self, _key: &str) -> anyhow::Result<bool> {
         Ok(false)
     }
@@ -155,8 +158,8 @@ pub async fn from_env() -> anyhow::Result<Arc<dyn PlanStorage>> {
     let dest = crate::util::env_opt("PLAN_UPLOAD_DESTINATION")
         .unwrap_or_default()
         .to_ascii_lowercase();
-    match dest.as_str() {
-        "" | "none" => Ok(Arc::new(NoopPlanStorage)),
+    let storage: Arc<dyn PlanStorage> = match dest.as_str() {
+        "" | "none" => Arc::new(NoopPlanStorage),
         "aws" | "s3" => {
             let bucket = crate::util::env_opt("AWS_S3_BUCKET").ok_or_else(|| {
                 anyhow::anyhow!("AWS_S3_BUCKET is required when PLAN_UPLOAD_DESTINATION=aws")
@@ -177,7 +180,7 @@ pub async fn from_env() -> anyhow::Result<Arc<dyn PlanStorage>> {
             } else {
                 None
             };
-            Ok(Arc::new(S3PlanStorage::new(&bucket, encryption).await?))
+            Arc::new(S3PlanStorage::new(&bucket, encryption).await?)
         }
         "gcp" | "gcs" => {
             let bucket = crate::util::env_opt("GOOGLE_STORAGE_PLAN_ARTEFACT_BUCKET")
@@ -188,14 +191,16 @@ pub async fn from_env() -> anyhow::Result<Arc<dyn PlanStorage>> {
                     )
                 })?;
             let client = crate::gcs::GcsClient::from_env()?;
-            Ok(Arc::new(GcsPlanStorage::new(client, &bucket)))
+            Arc::new(GcsPlanStorage::new(client, &bucket))
         }
         "github" | "azure" | "gitlab" => anyhow::bail!(
             "PLAN_UPLOAD_DESTINATION={} is not supported by this tool (only aws, gcp or empty)",
             dest
         ),
         other => anyhow::bail!("unknown PLAN_UPLOAD_DESTINATION '{}'", other),
-    }
+    };
+    tracing::info!(destination = storage.name(), "plan storage");
+    Ok(storage)
 }
 
 #[cfg(test)]

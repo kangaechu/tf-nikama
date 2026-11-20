@@ -86,7 +86,9 @@ pub struct Job {
     pub workflow: Workflow,
     pub command: Command,
     pub pr_number: Option<u64>,
+    #[allow(dead_code)] // carried for reporting
     pub event_name: String,
+    #[allow(dead_code)] // carried for reporting
     pub requested_by: String,
     /// `owner/repo`
     pub namespace: String,

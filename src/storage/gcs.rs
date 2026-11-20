@@ -77,6 +77,7 @@ impl PlanStorage for GcsPlanStorage {
         Ok(())
     }
 
+    #[cfg(test)]
     async fn exists(&self, key: &str) -> anyhow::Result<bool> {
         Ok(self.client.info(&self.bucket, key).await?.is_some())
     }

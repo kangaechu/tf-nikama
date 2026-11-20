@@ -43,6 +43,7 @@ pub struct CommentInfo {
     #[serde(default)]
     pub body: Option<String>,
     #[serde(default)]
+    #[allow(dead_code)] // part of the API response
     pub html_url: String,
 }
 
@@ -123,12 +124,14 @@ pub struct MergeRequirements {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)] // part of the API response
 pub struct StatusEntry {
     pub context: String,
     pub state: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)] // part of the API response
 pub struct CombinedStatus {
     pub state: String,
     #[serde(default)]
@@ -140,6 +143,7 @@ pub struct IssueInfo {
     pub number: u64,
     pub title: String,
     #[serde(default)]
+    #[allow(dead_code)] // part of the API response
     pub html_url: String,
 }
 

@@ -62,19 +62,19 @@ pub async fn from_env(enabled: bool) -> anyhow::Result<Arc<dyn Lock>> {
     let provider = crate::util::env_opt("LOCK_PROVIDER")
         .unwrap_or_else(|| "aws".to_string())
         .to_ascii_lowercase();
-    match provider.as_str() {
+    let lock: Arc<dyn Lock> = match provider.as_str() {
         "aws" | "dynamodb" => {
             let table = crate::util::env_first(&["NIKAMA_LOCK_TABLE", "DIGGER_LOCK_TABLE"])
                 .unwrap_or_else(|| dynamodb::DEFAULT_TABLE.to_string());
-            Ok(Arc::new(DynamoDbLock::new(&table).await?))
+            Arc::new(DynamoDbLock::new(&table).await?)
         }
         "s3" => {
             let bucket = crate::util::env_opt("AWS_S3_LOCK_BUCKET").ok_or_else(|| {
                 anyhow::anyhow!("AWS_S3_LOCK_BUCKET is required when LOCK_PROVIDER=s3")
             })?;
-            Ok(Arc::new(S3Lock::new(bucket.trim()).await?))
+            Arc::new(S3Lock::new(bucket.trim()).await?)
         }
-        "noop" | "none" => Ok(Arc::new(NoopLock)),
+        "noop" | "none" => Arc::new(NoopLock),
         "gcp" | "gcs" => {
             let bucket = crate::util::env_opt("GOOGLE_STORAGE_LOCK_BUCKET")
                 .map(|b| b.trim().to_ascii_lowercase())
@@ -82,14 +82,16 @@ pub async fn from_env(enabled: bool) -> anyhow::Result<Arc<dyn Lock>> {
                     anyhow::anyhow!("GOOGLE_STORAGE_LOCK_BUCKET is required when LOCK_PROVIDER=gcp")
                 })?;
             let client = crate::gcs::GcsClient::from_env()?;
-            Ok(Arc::new(GcsLock::new(client, &bucket)))
+            Arc::new(GcsLock::new(client, &bucket))
         }
         "azure" => anyhow::bail!(
             "LOCK_PROVIDER={} is not supported by this tool (only aws, s3, gcp or noop)",
             provider
         ),
         other => anyhow::bail!("unknown LOCK_PROVIDER '{}'", other),
-    }
+    };
+    tracing::info!(provider = lock.name(), "lock backend");
+    Ok(lock)
 }
 
 /// Outcome of trying to lock a project for a PR.

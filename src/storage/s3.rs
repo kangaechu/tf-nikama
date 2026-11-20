@@ -115,6 +115,7 @@ impl PlanStorage for S3PlanStorage {
         Ok(())
     }
 
+    #[cfg(test)]
     async fn exists(&self, key: &str) -> anyhow::Result<bool> {
         let res = self
             .client
