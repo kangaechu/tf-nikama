@@ -1,5 +1,6 @@
 //! Job model and execution engine (Terraform / OpenTofu).
 
+pub mod aws_auth;
 mod exec;
 mod output;
 mod plan_json;

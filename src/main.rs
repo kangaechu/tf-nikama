@@ -1,7 +1,6 @@
 //! nikama: backendless Terraform/OpenTofu PR automation for GitHub Actions.
 
 mod aws;
-mod aws_auth;
 mod cli;
 mod config;
 mod engine;

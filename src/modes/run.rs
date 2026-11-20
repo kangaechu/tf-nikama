@@ -1,7 +1,7 @@
 //! Shared job execution: parallel plans, level-ordered applies.
 
-use crate::aws_auth::populate_job_credentials;
 use crate::config::{Config, OnFailure};
+use crate::engine::aws_auth::populate_job_credentials;
 use crate::engine::{plan_summary_table, ApplyResult, Command, Job, JobExecutor, PlanResult};
 use crate::lock::{LockOutcome, PrLocker};
 use crate::report::{DetailKind, ReportWriter, RowStatus};

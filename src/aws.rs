@@ -2,7 +2,7 @@
 //!
 //! Credentials and region come from the environment of the workflow step
 //! (typically `aws-actions/configure-aws-credentials`); per-job credentials
-//! for Terraform itself are handled separately in `aws_auth`.
+//! for Terraform itself are handled separately in `engine::aws_auth`.
 
 /// Load the SDK configuration from the environment. The region is required:
 /// without it every request would fail later with a less helpful error.
