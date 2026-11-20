@@ -1,12 +1,12 @@
 //! Job model and execution engine (Terraform / OpenTofu).
 
 mod exec;
-#[cfg(test)]
-mod exec_tests;
 mod output;
 mod plan_json;
 pub mod providers;
 mod runner;
+#[cfg(test)]
+mod tests;
 
 pub use exec::{ApplyResult, ExecError, JobExecutor, PlanResult};
 pub use plan_json::{plan_summary_table, ApplySummary, PlanSummary};
@@ -168,35 +168,5 @@ pub fn plan_file_name(namespace: &str, pr_number: Option<u64>, project: &str) ->
     match pr_number {
         Some(pr) => format!("{}-{}-{}.tfplan", ns, pr, project),
         None => format!("{}-{}.tfplan", ns, project),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parses_commands() {
-        assert_eq!(Command::parse("digger plan"), Some(Command::Plan));
-        assert_eq!(Command::parse("Nikama Apply"), Some(Command::Apply));
-        assert_eq!(Command::parse("unlock"), Some(Command::Unlock));
-        assert_eq!(Command::parse("digger noop"), None);
-    }
-
-    #[test]
-    fn parses_commands_with_configured_wakeup_word() {
-        let words = vec!["tf".to_string()];
-        assert_eq!(Command::parse_with("tf plan", &words), Some(Command::Plan));
-        assert_eq!(
-            Command::parse_with("TF Apply", &words),
-            Some(Command::Apply)
-        );
-        // The defaults keep working for workflow_configuration entries.
-        assert_eq!(
-            Command::parse_with("digger unlock", &words),
-            Some(Command::Unlock)
-        );
-        assert_eq!(Command::parse_with("tf", &words), None);
-        assert_eq!(Command::parse("tf plan"), None);
     }
 }

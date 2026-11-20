@@ -435,3 +435,28 @@ async fn provider_outside_the_allowlist_fails_init() {
     let text = format!("{}\n{}", err.stdout, err.stderr);
     assert!(text.contains("hashicorp/null"), "{}", text);
 }
+
+#[test]
+fn parses_commands() {
+    assert_eq!(Command::parse("digger plan"), Some(Command::Plan));
+    assert_eq!(Command::parse("Nikama Apply"), Some(Command::Apply));
+    assert_eq!(Command::parse("unlock"), Some(Command::Unlock));
+    assert_eq!(Command::parse("digger noop"), None);
+}
+
+#[test]
+fn parses_commands_with_configured_wakeup_word() {
+    let words = vec!["tf".to_string()];
+    assert_eq!(Command::parse_with("tf plan", &words), Some(Command::Plan));
+    assert_eq!(
+        Command::parse_with("TF Apply", &words),
+        Some(Command::Apply)
+    );
+    // The defaults keep working for workflow_configuration entries.
+    assert_eq!(
+        Command::parse_with("digger unlock", &words),
+        Some(Command::Unlock)
+    );
+    assert_eq!(Command::parse_with("tf", &words), None);
+    assert_eq!(Command::parse("tf plan"), None);
+}
