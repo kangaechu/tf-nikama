@@ -24,7 +24,7 @@ pub struct S3PlanStorage {
 
 impl S3PlanStorage {
     pub async fn new(bucket: &str, encryption: Option<Encryption>) -> anyhow::Result<Self> {
-        let config = aws_config::load_from_env().await;
+        let config = crate::aws::sdk_config("S3 plan storage").await?;
         Ok(Self {
             client: Client::new(&config),
             bucket: bucket.to_string(),

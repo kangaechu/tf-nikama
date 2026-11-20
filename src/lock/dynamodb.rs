@@ -25,10 +25,7 @@ pub struct DynamoDbLock {
 
 impl DynamoDbLock {
     pub async fn new(table: &str) -> anyhow::Result<Self> {
-        let config = aws_config::load_from_env().await;
-        if config.region().is_none() {
-            anyhow::bail!("AWS_REGION is not set; it is required for the DynamoDB lock");
-        }
+        let config = crate::aws::sdk_config("DynamoDB lock").await?;
         Ok(Self {
             client: Client::new(&config),
             table: table.to_string(),

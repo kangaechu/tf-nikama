@@ -26,7 +26,7 @@ pub struct S3Lock {
 
 impl S3Lock {
     pub async fn new(bucket: &str) -> anyhow::Result<Self> {
-        let config = aws_config::load_from_env().await;
+        let config = crate::aws::sdk_config("S3 lock").await?;
         Ok(Self::with_client(Client::new(&config), bucket))
     }
 
