@@ -522,6 +522,51 @@ fn impacted_direct_matches() {
     assert!(impacted_projects(&c, &["unrelated.txt".into()], None).is_empty());
 }
 
+/// Issue #16: a root project (`dir: .`) is not impacted by changes that
+/// belong to a project nested inside it, unless an include pattern says so.
+#[test]
+fn impacted_root_project_leaves_nested_projects_alone() {
+    let c = load(
+        r#"
+projects:
+  - name: root
+    dir: .
+  - name: dev
+    dir: dev
+  - name: envs
+    dir: envs
+  - name: prod
+    dir: envs/prod
+"#,
+    )
+    .unwrap();
+    let one = |f: &str| names(&impacted_projects(&c, &[f.into()], None)).join(",");
+    assert_eq!(one("main.tf"), "root");
+    assert_eq!(one("modules/vpc/main.tf"), "root");
+    assert_eq!(one("dev/main.tf"), "dev");
+    assert_eq!(one("envs/shared.tf"), "envs");
+    assert_eq!(one("envs/prod/main.tf"), "prod");
+    // A directory that merely shares a prefix is not nested.
+    assert_eq!(one("dev-tools/x.tf"), "root");
+
+    // An explicit include pattern restores the wide match.
+    let c = load(
+        r#"
+projects:
+  - name: root
+    dir: .
+    include_patterns: ["**/*"]
+  - name: dev
+    dir: dev
+"#,
+    )
+    .unwrap();
+    assert_eq!(
+        names(&impacted_projects(&c, &["dev/main.tf".into()], None)),
+        vec!["root", "dev"]
+    );
+}
+
 #[test]
 fn impacted_hard_mode_adds_dependents_in_config_order() {
     let c = impact_config("hard");

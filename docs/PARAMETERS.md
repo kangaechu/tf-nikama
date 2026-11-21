@@ -132,7 +132,7 @@ Unknown keys are errors. The file is read from the checkout unless
 | Key | Default | Description |
 |---|---|---|
 | `name` | required | Project name, used with `-p` and in `depends_on`. |
-| `dir` | required | Directory relative to the repository root. |
+| `dir` | required | Directory relative to the repository root. Files under the `dir` of another project nested inside it do not impact this project. |
 | `workspace` | `default` | Terraform workspace. |
 | `workflow` | `default` | Name of the workflow in `workflows` to use. |
 | `opentofu` | `false` | Run `tofu` instead of `terraform`. |

@@ -86,8 +86,12 @@ Terraform / OpenTofu output are unchanged.
    pull requests").
 2. Impacted projects are computed from the PR's changed files (`dir/**`,
    `include_patterns`, `exclude_patterns`, plus downstream `depends_on`
-   projects in `hard` mode). With `autoplan_modules: true`, local modules the
-   project uses count as part of it (see "Local modules"). A project with a
+   projects in `hard` mode). The directory of a project nested inside another
+   project's `dir` belongs to the nested project only: with `root` at `.` and
+   `dev` at `dev`, a change to `dev/main.tf` impacts `dev` alone, unless
+   `root` lists it in `include_patterns`. With `autoplan_modules: true`, local
+   modules the project uses count as part of it (see "Local modules"). A
+   project with a
    `branch` only counts for pull requests into a matching base branch (see
    "Base branch filter").
 3. One run comment is posted immediately with every project as *pending*, and
