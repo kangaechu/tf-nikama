@@ -130,7 +130,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'issue_comment' && format('refs/pull/{0}/merge', github.event.issue.number) || '' }}
+          # refs/pull/N/merge は PR がクローズされると消えるので、クローズ済み
+          # PR では head ref を使い、`nikama unlock` が動くようにする
+          ref: ${{ github.event_name == 'issue_comment' && format('refs/pull/{0}/{1}', github.event.issue.number, github.event.issue.state == 'closed' && 'head' || 'merge') || '' }}
       - uses: hashicorp/setup-terraform@v4
         with:
           terraform_wrapper: false
