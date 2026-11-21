@@ -28,7 +28,8 @@
 
 | 入力 | デフォルト | 説明 |
 |---|---|---|
-| `version` | アクションの ref | インストールするリリースタグ（例: `v0.10.0`）。リリースタグ以外の ref を指定すると cargo でソースからビルドします。 |
+| `version` | アクションの ref | インストールするリリースタグ（例: `v0.10.0`）。リリースタグ以外の ref を指定するとランナーの cargo でソースからビルドします。 |
+| `verify-attestation` | `true` | リリースのビルド来歴（provenance）attestation を `gh attestation verify` で検証します（ランナーに `gh` が必要）。`SHA256SUMS` の検証は常に行います。 |
 | `mode` | `` | プルリクエストイベントでは空、`workflow_dispatch` では `manual`、スケジュール実行のドリフト検知では `drift-detection`。 |
 | `command` | `` | 手動モードのみ: `nikama plan`、`nikama apply`、`nikama destroy`（`digger ...` も受け付けます）。 |
 | `project` | `` | 手動モードのみ: 実行するプロジェクト。 |

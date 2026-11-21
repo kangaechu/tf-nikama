@@ -29,7 +29,8 @@ All inputs of `kangaechu/tf-nikama` are optional.
 
 | Input | Default | Description |
 |---|---|---|
-| `version` | the action ref | Release tag to install (for example `v0.10.0`). A non-release ref builds from source with cargo. |
+| `version` | the action ref | Release tag to install (for example `v0.10.0`). A non-release ref builds from source with the runner's cargo. |
+| `verify-attestation` | `true` | Verify the release's build provenance attestation with `gh attestation verify` (needs `gh` on the runner). The `SHA256SUMS` check is always done. |
 | `mode` | `` | Empty for pull request events, `manual` for `workflow_dispatch`, `drift-detection` for scheduled drift runs. |
 | `command` | `` | Manual mode only: `nikama plan`, `nikama apply` or `nikama destroy` (`digger ...` is accepted as well). |
 | `project` | `` | Manual mode only: the project to run. |
