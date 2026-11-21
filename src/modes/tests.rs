@@ -2,8 +2,9 @@
 
 use super::pr_event::{
     acquire_locks, all_plans_empty, apply_gate, check_approved, check_blocked, check_undiverged,
-    closed_pr_rejection, draft_pr_rejection, no_lock_reason, release_no_change_locks,
-    required_checks, set_noop_statuses, summarize, sweep_locks, ApplyGate, PlanLocking,
+    closed_pr_rejection, draft_pr_rejection, no_lock_reason, release_locks_after_merge,
+    release_no_change_locks, required_checks, set_noop_statuses, summarize, sweep_locks, ApplyGate,
+    PlanLocking,
 };
 use super::run::{run_by_levels, JobResult, Outcome, RunContext};
 use crate::config::load_from_str;
@@ -1099,6 +1100,54 @@ async fn sweep_releases_only_this_prs_other_locks() {
     assert_eq!(mem.holder("o/r#z").await.unwrap(), Some(2));
     assert_eq!(mem.holder("x/y#a").await.unwrap(), Some(1));
     assert!(!storage.exists("o-r-1-eks.tfplan").await.unwrap());
+}
+
+/// Issue #59: a merge made by nikama itself triggers no `closed` event, so
+/// the run that merged the PR releases every lock it holds and says so.
+#[tokio::test]
+async fn auto_merge_releases_every_lock_of_the_merged_pr() {
+    use wiremock::matchers::body_string_contains;
+
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/repos/o/r/issues/1/comments"))
+        .and(body_string_contains(
+            "released lock of `a` (pull request merged)",
+        ))
+        .and(body_string_contains(
+            "released lock of `eks` (pull request merged)",
+        ))
+        .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({"id": 5})))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let mem = Arc::new(MemLock::holding(&[
+        ("o/r#a", 1),
+        ("o/r#eks", 1),
+        ("o/r#z", 2),
+        ("x/y#a", 1),
+    ]));
+    let locker = pr_locker(&server, mem.clone());
+    let storage = MemoryStorage::with("o-r-1-eks.tfplan", Some("sha"));
+    let github = crate::github::GithubClient::new("t", "o", "r", Some(&server.uri()));
+    release_locks_after_merge(&locker, &storage, &github, 1, "o/r").await;
+    assert_eq!(mem.holder("o/r#a").await.unwrap(), None);
+    assert_eq!(mem.holder("o/r#eks").await.unwrap(), None);
+    assert_eq!(mem.holder("o/r#z").await.unwrap(), Some(2));
+    assert_eq!(mem.holder("x/y#a").await.unwrap(), Some(1));
+    assert!(!storage.exists("o-r-1-eks.tfplan").await.unwrap());
+}
+
+#[tokio::test]
+async fn auto_merge_posts_nothing_when_the_merged_pr_holds_no_lock() {
+    let server = MockServer::start().await;
+    let mem = Arc::new(MemLock::holding(&[("o/r#z", 2)]));
+    let locker = pr_locker(&server, mem.clone());
+    let storage = MemoryStorage::default();
+    let github = crate::github::GithubClient::new("t", "o", "r", Some(&server.uri()));
+    release_locks_after_merge(&locker, &storage, &github, 1, "o/r").await;
+    assert!(server.received_requests().await.unwrap().is_empty());
+    assert_eq!(mem.holder("o/r#z").await.unwrap(), Some(2));
 }
 
 // ---------------------------------------------------------------------------

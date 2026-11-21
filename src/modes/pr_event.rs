@@ -175,8 +175,21 @@ pub async fn run(env: &Env, config: Arc<Config>, ctx: &GithubContext, github: Gi
 
     write_outputs(trigger.pr_number);
 
-    if !outcome.failed && outcome.applied > 0 && config.auto_merge && trigger.covers_all_impacted {
-        auto_merge(&github, &config, trigger.pr_number).await;
+    if !outcome.failed
+        && outcome.applied > 0
+        && config.auto_merge
+        && trigger.covers_all_impacted
+        && auto_merge(&github, &config, trigger.pr_number).await
+    {
+        // A merge made with GITHUB_TOKEN triggers no `closed` event.
+        release_locks_after_merge(
+            &locker,
+            run_ctx.storage.as_ref(),
+            &github,
+            trigger.pr_number,
+            &ctx.repository,
+        )
+        .await;
     }
 
     if outcome.failed {
@@ -1643,33 +1656,35 @@ async fn apply_allowed(
     }
 }
 
-async fn auto_merge(github: &GithubClient, config: &Config, pr_number: u64) {
+/// Merge the PR when its checks are green. Returns `true` when this run
+/// merged it.
+async fn auto_merge(github: &GithubClient, config: &Config, pr_number: u64) -> bool {
     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     let pr = match github.get_pr(pr_number).await {
         Ok(p) => p,
         Err(e) => {
             tracing::error!(error = %e, "auto-merge: could not fetch PR");
-            return;
+            return false;
         }
     };
     if pr.merged {
         tracing::info!("auto-merge: PR already merged");
-        return;
+        return false;
     }
     match github.combined_status(&pr.head_sha).await {
         Ok(c) if c.state == "success" => {}
         Ok(c) => {
             tracing::warn!(state = %c.state, "auto-merge: combined status is not success; skipping");
-            return;
+            return false;
         }
         Err(e) => {
             tracing::error!(error = %e, "auto-merge: could not read combined status");
-            return;
+            return false;
         }
     }
     if pr.mergeable != Some(true) {
         tracing::warn!("auto-merge: PR is not mergeable; skipping");
-        return;
+        return false;
     }
     match github
         .merge_pr(
@@ -1679,8 +1694,52 @@ async fn auto_merge(github: &GithubClient, config: &Config, pr_number: u64) {
         )
         .await
     {
-        Ok(()) => tracing::info!("auto-merge: PR merged"),
-        Err(e) => tracing::error!(error = %e, "auto-merge: merge failed"),
+        Ok(()) => {
+            tracing::info!("auto-merge: PR merged");
+            true
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "auto-merge: merge failed");
+            false
+        }
+    }
+}
+
+/// Release every lock the merged PR holds, delete its stored plans and tell
+/// the PR in a comment of its own (the run report is already closed).
+pub(super) async fn release_locks_after_merge(
+    locker: &PrLocker,
+    storage: &dyn PlanStorage,
+    github: &GithubClient,
+    pr_number: u64,
+    repository: &str,
+) {
+    let notes: Vec<String> = match sweep_locks(locker, storage, pr_number, repository, &[]).await {
+        Ok(released) => released
+            .iter()
+            .map(|p| format!("released lock of `{}` (pull request merged)", p))
+            .collect(),
+        Err(e) => {
+            tracing::error!(error = %e, "auto-merge: could not release the locks of the merged PR");
+            vec![format!(
+                "could not release the locks of this pull request after merging it: {}; run `unlock` to release them",
+                e
+            )]
+        }
+    };
+    if notes.is_empty() {
+        return;
+    }
+    let body = notes
+        .iter()
+        .map(|n| format!("- {}", n))
+        .collect::<Vec<_>>()
+        .join("\n");
+    if let Err(e) = github
+        .create_comment(pr_number, &format!("**nikama**\n\n{}", body))
+        .await
+    {
+        tracing::warn!(error = %e, "auto-merge: could not post the unlock note");
     }
 }
 
