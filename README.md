@@ -130,8 +130,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # refs/pull/N/merge disappears once a PR is closed; use the head
-          # ref there so `nikama unlock` still works on a closed PR.
           ref: ${{ github.event_name == 'issue_comment' && format('refs/pull/{0}/{1}', github.event.issue.number, github.event.issue.state == 'closed' && 'head' || 'merge') || '' }}
       - uses: hashicorp/setup-terraform@v4
         with:

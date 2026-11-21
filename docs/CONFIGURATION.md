@@ -145,12 +145,10 @@ order. If any project is held by another open PR, no new lock is taken: the
 held projects are reported as *locked by #N*, the others as skipped, and only
 projects this PR already holds still run. On close / merge and on a bare
 `nikama unlock`, every lock the PR still holds is released, not only those of
-the currently impacted projects. When `auto_merge` merges the PR, the run that
-merged it releases the locks itself and posts a note, because a merge made
-with the workflow's `GITHUB_TOKEN` triggers no `closed` event. For
-`nikama unlock` on a closed PR the workflow must check out `refs/pull/N/head`
-(the quick-start workflow does), as GitHub removes `refs/pull/N/merge` when a
-PR is closed. A lock held by a different open pull request
+the currently impacted projects. `auto_merge` releases them in the run that
+merged the PR. `nikama unlock` on a closed PR needs the workflow to check out
+`refs/pull/N/head`, as the quick-start workflow does. A lock held by a
+different open pull request
 is never released this way; a lock left behind by a closed pull request is
 taken over by the next PR that needs the project. `nikama lock` takes the
 locks of the impacted (or `-p` / `-d` selected) projects without planning;
@@ -435,11 +433,6 @@ The workflow `permissions:` block then only matters for `id-token: write`
 (cloud credentials); the app token carries its own permissions. Unlike
 `GITHUB_TOKEN`, a merge made with an app token triggers `push` workflows on
 the base branch, so a workflow that applies after merge runs as usual.
-
-Whichever token merges, the run that merged the PR releases its locks and
-deletes its stored plans right away (see "PR locks"), so nothing depends on a
-`closed` event that `GITHUB_TOKEN` never triggers.
-
 A personal access token of a user on the allow list works the same way, but
 ties the merge to that person's account.
 

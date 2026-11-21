@@ -181,9 +181,7 @@ pub async fn run(env: &Env, config: Arc<Config>, ctx: &GithubContext, github: Gi
         && trigger.covers_all_impacted
         && auto_merge(&github, &config, trigger.pr_number).await
     {
-        // A merge made with the workflow's GITHUB_TOKEN triggers no
-        // `closed` event, so the usual unlock-on-close never runs: release
-        // the PR's locks here, in the run that merged it.
+        // A merge made with GITHUB_TOKEN triggers no `closed` event.
         release_locks_after_merge(
             &locker,
             run_ctx.storage.as_ref(),
@@ -1707,9 +1705,8 @@ async fn auto_merge(github: &GithubClient, config: &Config, pr_number: u64) -> b
     }
 }
 
-/// After this run merged the PR: release every lock it holds, delete its
-/// stored plans and tell the PR. The run report is already closed at this
-/// point, so the note goes into a comment of its own.
+/// Release every lock the merged PR holds, delete its stored plans and tell
+/// the PR in a comment of its own (the run report is already closed).
 pub(super) async fn release_locks_after_merge(
     locker: &PrLocker,
     storage: &dyn PlanStorage,
