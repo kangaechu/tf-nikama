@@ -30,6 +30,26 @@ fn join_pattern(dir: &str, pattern: &str) -> String {
     }
 }
 
+/// Glob matching every file under a normalised directory.
+fn dir_glob(dir: &str) -> String {
+    if dir.is_empty() {
+        "**/*".to_string()
+    } else {
+        format!("{}/**/*", dir)
+    }
+}
+
+/// `true` when `child` is a strict subdirectory of `parent` (both normalised).
+fn is_nested_dir(parent: &str, child: &str) -> bool {
+    if parent.is_empty() {
+        !child.is_empty()
+    } else {
+        child
+            .strip_prefix(parent)
+            .is_some_and(|rest| rest.starts_with('/'))
+    }
+}
+
 fn build_set(patterns: &[String]) -> Result<globset::GlobSet, globset::Error> {
     let mut b = GlobSetBuilder::new();
     for p in patterns {
@@ -79,22 +99,34 @@ pub fn impacted_projects(
             continue;
         }
         let dir = normalize_path(&p.dir);
-        let mut includes: Vec<String> = vec![if dir.is_empty() {
-            "**/*".to_string()
-        } else {
-            format!("{}/**/*", dir)
-        }];
-        includes.extend(p.include_patterns.iter().map(|pat| join_pattern(&dir, pat)));
-        includes.extend(p.module_dirs.iter().map(|m| format!("{}/**/*", m)));
+        let own_dir = vec![dir_glob(&dir)];
         let excludes: Vec<String> = p
             .exclude_patterns
             .iter()
             .map(|pat| join_pattern(&dir, pat))
             .collect();
-        if changed_files
+        // The directory of a project nested inside this one belongs to that
+        // project; a root project (`dir: .`) is otherwise impacted by every
+        // changed file. Explicit include patterns are not narrowed this way.
+        let mut own_excludes = excludes.clone();
+        own_excludes.extend(
+            config
+                .projects
+                .iter()
+                .map(|q| normalize_path(&q.dir))
+                .filter(|d| is_nested_dir(&dir, d))
+                .map(|d| dir_glob(&d)),
+        );
+        let mut explicit: Vec<String> = p
+            .include_patterns
             .iter()
-            .any(|f| matches_patterns(f, &includes, &excludes))
-        {
+            .map(|pat| join_pattern(&dir, pat))
+            .collect();
+        explicit.extend(p.module_dirs.iter().map(|m| format!("{}/**/*", m)));
+        if changed_files.iter().any(|f| {
+            matches_patterns(f, &own_dir, &own_excludes)
+                || (!explicit.is_empty() && matches_patterns(f, &explicit, &excludes))
+        }) {
             impacted.push(p.clone());
         }
     }
@@ -149,5 +181,15 @@ mod tests {
         // `*` does not cross directory boundaries.
         assert!(!matches_patterns("dev/vpc/main.tf", &["dev/*".into()], &[]));
         assert!(matches_patterns("anything", &[], &[]));
+    }
+
+    #[test]
+    fn nested_dirs() {
+        assert!(is_nested_dir("", "dev"));
+        assert!(!is_nested_dir("", ""));
+        assert!(is_nested_dir("infra", "infra/app"));
+        assert!(!is_nested_dir("infra", "infra"));
+        assert!(!is_nested_dir("infra", "infrastructure"));
+        assert!(!is_nested_dir("infra/app", "infra"));
     }
 }
