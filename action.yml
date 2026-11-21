@@ -7,6 +7,10 @@ inputs:
     description: "nikama release tag to install (e.g. v0.1.0). Defaults to the action ref."
     required: false
     default: ""
+  verify-attestation:
+    description: "Set to `false` to skip verifying the release's build provenance attestation with `gh attestation verify` (the checksum is always verified)"
+    required: false
+    default: "true"
   mode:
     description: "Empty for PR events, `manual` for workflow_dispatch, `drift-detection` for scheduled drift runs"
     required: false
@@ -124,6 +128,7 @@ runs:
       shell: bash
       env:
         INPUT_VERSION: ${{ inputs.version }}
+        VERIFY_ATTESTATION: ${{ inputs.verify-attestation }}
         ACTION_REF: ${{ github.action_ref }}
         GH_TOKEN: ${{ inputs.github-token }}
       run: |
@@ -143,15 +148,33 @@ runs:
         mkdir -p "$BIN_DIR"
         if [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
           ASSET="nikama-${OS}-${ARCH}.tar.gz"
-          URL="https://github.com/kangaechu/tf-nikama/releases/download/${VERSION}/${ASSET}"
-          echo "Downloading ${URL}"
-          curl -fsSL -o "$BIN_DIR/$ASSET" "$URL"
+          BASE="https://github.com/kangaechu/tf-nikama/releases/download/${VERSION}"
+          echo "Downloading ${BASE}/${ASSET}"
+          curl -fsSL -o "$BIN_DIR/$ASSET" "${BASE}/${ASSET}"
+          curl -fsSL -o "$BIN_DIR/SHA256SUMS" "${BASE}/SHA256SUMS"
+          (
+            cd "$BIN_DIR"
+            grep " ${ASSET}\$" SHA256SUMS > "${ASSET}.sha256"
+            if command -v sha256sum >/dev/null; then
+              sha256sum -c "${ASSET}.sha256"
+            else
+              shasum -a 256 -c "${ASSET}.sha256"
+            fi
+          )
+          if [[ "$VERIFY_ATTESTATION" != "false" ]]; then
+            if ! command -v gh >/dev/null; then
+              echo "::error::gh is required to verify the release attestation; install it or set verify-attestation: false"
+              exit 1
+            fi
+            gh attestation verify "$BIN_DIR/$ASSET" --repo kangaechu/tf-nikama \
+              --signer-workflow kangaechu/tf-nikama/.github/workflows/release.yml
+          fi
           tar -xzf "$BIN_DIR/$ASSET" -C "$BIN_DIR"
         else
           echo "No release tag given (ref: ${VERSION}); building from source with cargo"
           if ! command -v cargo >/dev/null; then
-            curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal
-            export PATH="$HOME/.cargo/bin:$PATH"
+            echo "::error::cargo is required to build from source; add a Rust toolchain step before this action or set version to a release tag"
+            exit 1
           fi
           cargo build --release --manifest-path "$GITHUB_ACTION_PATH/Cargo.toml"
           cp "$GITHUB_ACTION_PATH/target/release/nikama" "$BIN_DIR/nikama"

@@ -524,6 +524,15 @@ With comment-only triggering, `config-ref: default` and `allowed-providers`
 hold against users with write access too: changing either requires a merge
 to the default branch.
 
+The binary itself is checked before it runs: the action verifies the
+downloaded release against the release's `SHA256SUMS` and against the build
+provenance attestation GitHub signed for the release workflow, so an asset
+replaced after publication is refused. To check a release by hand:
+
+```sh
+gh attestation verify nikama-linux-x86_64.tar.gz --repo kangaechu/tf-nikama
+```
+
 ## Environment variables
 
 The action sets these for you; when running the binary directly:
