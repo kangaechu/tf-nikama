@@ -118,6 +118,7 @@ Unknown keys are errors. The file is read from the checkout unless
 | `autoplan_modules` | `false` | Treat local modules a project references (`./` or `../` sources, followed transitively) as part of the project. |
 | `allowed_plan_args` | `[]` | Patterns for arguments a comment may pass to `terraform plan` after `--`. Empty: `--` is refused. |
 | `allowed_providers` | `[]` | Provider source patterns this configuration allows. Only narrows the `allowed-providers` input. |
+| `redact_secrets` | `true` | Replace secret-looking values in plan / apply output (`password = ...`, credentials in URLs, PEM private keys, well-known token formats) with `<REDACTED>` before it is logged or posted. See [Secrets in plan output](CONFIGURATION.md#secrets-in-plan-output). |
 | `drift_include_patterns` | `[]` | Projects whose `dir` matches are included in drift detection. |
 | `drift_exclude_patterns` | `[]` | Projects whose `dir` matches are excluded from drift detection. |
 | `concurrency.max_parallel` | `4` | Concurrent plans. |
@@ -157,7 +158,7 @@ A workflow may be `null` to use the built-in steps (`plan` = `init`, `plan`;
 | `env_vars.state[]` | `[]` | Environment variables for `init` (the state backend). Each entry: `name` plus `value` or `value_from` (name of a workflow environment variable). |
 | `env_vars.commands[]` | `[]` | Environment variables for `plan` / `apply` / `destroy` and `run:` steps; same shape. Variables nikama sets itself (`TF_CLI_CONFIG_FILE` for `allowed-providers`, `TF_DATA_DIR`, and for `run:` steps those listed under [Variables available to `run:` steps](#variables-available-to-run-steps)) win over entries with the same name. |
 | `plan.steps[]` | `[init, plan]` | Steps of the plan stage; see below. |
-| `plan.filter_regex`, `apply.filter_regex` | none | Regular expression; matches in the stage output are replaced with `<REDACTED>` in logs and the comment. |
+| `plan.filter_regex`, `apply.filter_regex` | none | Regular expression (Rust `regex` syntax); matches in the stage output are replaced with `<REDACTED>` in logs and the comment, before the built-in redaction (`redact_secrets`). |
 | `apply.steps[]` | `[init, apply]` | Steps of the apply stage. |
 | `workflow_configuration.on_pull_request_pushed` | `[nikama plan]` | Commands run on push. `destroy` is refused here, as it is in comments. |
 | `workflow_configuration.on_pull_request_closed` | `[nikama unlock]` | Commands run on close or merge. |

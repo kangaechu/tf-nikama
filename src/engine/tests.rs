@@ -231,6 +231,7 @@ fn executor<'a>(f: &Fixture, job: &'a Job) -> JobExecutor<'a> {
         init_lock: None,
         isolate_data_dir: false,
         cli_config: None,
+        redact_secrets: true,
     }
 }
 
@@ -386,6 +387,7 @@ async fn nonexistent_project_dir_fails_fast() {
         init_lock: None,
         isolate_data_dir: false,
         cli_config: None,
+        redact_secrets: true,
     };
     let err = exec.plan().await.expect_err("must fail");
     assert_eq!(err.step, "init");
@@ -434,6 +436,57 @@ async fn provider_outside_the_allowlist_fails_init() {
     );
     let text = format!("{}\n{}", err.stdout, err.stderr);
     assert!(text.contains("hashicorp/null"), "{}", text);
+}
+
+const SECRET_TF: &str = r#"
+resource "terraform_data" "demo" {
+  input = {
+    db_password = "hunter2"
+    access_key  = "AKIAIOSFODNN7EXAMPLE"
+    name        = "db-password"
+  }
+}
+"#;
+
+#[tokio::test]
+async fn builtin_redaction_covers_plan_text_but_not_the_summary() {
+    require_terraform!();
+    let f = fixture(
+        SECRET_TF,
+        "    plan:\n      steps:\n        - init\n        - plan\n",
+    );
+    let plan_job = job(&f, Command::Plan);
+    let exec = executor(&f, &plan_job);
+    let plan = exec.plan().await.expect("plan succeeds");
+    // The summary comes from `show -json`, which is parsed and never posted.
+    assert_eq!(plan.summary.create, 1);
+    assert!(!plan.plan_text.contains("hunter2"), "{}", plan.plan_text);
+    assert!(
+        !plan.plan_text.contains("AKIAIOSFODNN7EXAMPLE"),
+        "{}",
+        plan.plan_text
+    );
+    assert!(
+        plan.plan_text.contains("db_password = <REDACTED>"),
+        "{}",
+        plan.plan_text
+    );
+    assert!(
+        plan.plan_text.contains("access_key  = \"<REDACTED>\""),
+        "{}",
+        plan.plan_text
+    );
+    // A key that merely contains a secret-looking word in its value is kept.
+    assert!(
+        plan.plan_text.contains("name        = \"db-password\""),
+        "{}",
+        plan.plan_text
+    );
+
+    let mut exec = executor(&f, &plan_job);
+    exec.redact_secrets = false;
+    let plan = exec.plan().await.expect("plan succeeds");
+    assert!(plan.plan_text.contains("hunter2"), "{}", plan.plan_text);
 }
 
 #[test]

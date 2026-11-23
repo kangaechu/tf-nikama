@@ -90,6 +90,7 @@ Everything Digger's backendless mode does, plus:
 - **Drafts stay quiet**: a draft PR runs nothing and holds no locks until it is marked ready for review.
 - **Never apply a stale plan**: a stored plan is tied to the commit it came from and refused for any other.
 - **Outsiders cannot run your Terraform**: comment commands and approvals only count from users with write access, and `config-ref` / `allowed-providers` stop a PR from changing what runs with the job's credentials.
+- **Secrets stay out of the comment**: values that look like passwords, tokens, private keys or URL credentials are redacted from plan and apply output before it is posted or logged, on top of your own `filter_regex`.
 
 ## Quick start
 

@@ -398,6 +398,9 @@ pub struct Config {
     /// Patterns (`*` matches any run of characters) for arguments a comment
     /// may pass to `terraform plan` after `--`. Empty: feature off.
     pub allowed_plan_args: Vec<String>,
+    /// Redact secret-looking values (built-in patterns) in plan / apply
+    /// output before it is logged or posted.
+    pub redact_secrets: bool,
     pub graph: DependencyGraph,
 }
 

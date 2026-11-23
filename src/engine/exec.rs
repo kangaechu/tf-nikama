@@ -4,6 +4,7 @@ use super::output::{cleanup_apply_output, cleanup_plan_output};
 use super::plan_json::{
     apply_summary_from_output, plan_summary_from_json, ApplySummary, PlanSummary,
 };
+use super::redact::Redactor;
 use super::runner::{run_streaming, CmdOutput, IacRunner};
 use super::Job;
 use crate::config::Step;
@@ -87,6 +88,9 @@ pub struct JobExecutor<'a> {
     /// Terraform CLI configuration enforcing the provider allowlist, written
     /// to the work dir and passed through `TF_CLI_CONFIG_FILE` when set.
     pub cli_config: Option<String>,
+    /// Apply the built-in secret redaction (`redact_secrets` in nikama.yml)
+    /// to stage output on top of the stage's `filter_regex`.
+    pub redact_secrets: bool,
 }
 
 impl<'a> JobExecutor<'a> {
@@ -119,7 +123,10 @@ impl<'a> JobExecutor<'a> {
     }
 
     fn runner(&self, filter_regex: Option<&str>) -> Result<IacRunner, ExecError> {
-        let filter = filter_regex.and_then(|r| regex::Regex::new(r).ok());
+        let filter = Redactor::new(
+            filter_regex.and_then(|r| regex::Regex::new(r).ok()),
+            self.redact_secrets,
+        );
         let mut base_env = BTreeMap::new();
         if self.isolate_data_dir {
             base_env.insert(
@@ -253,7 +260,7 @@ impl<'a> JobExecutor<'a> {
         Ok(out)
     }
 
-    fn take_additional_output(&self, filter: Option<&regex::Regex>) -> Option<String> {
+    fn take_additional_output(&self, filter: &Redactor) -> Option<String> {
         let p = self.additional_output_file();
         let content = std::fs::read_to_string(&p).ok()?;
         let _ = std::fs::remove_file(&p);
@@ -263,10 +270,7 @@ impl<'a> JobExecutor<'a> {
         }
         // The file is written by `run:` steps, so it gets the same redaction
         // as the rest of the stage output before it reaches the comment.
-        Some(match filter {
-            Some(re) => re.replace_all(trimmed, "<REDACTED>").into_owned(),
-            None => trimmed.to_string(),
-        })
+        Some(filter.text(trimmed))
     }
 
     /// Run the plan stage. Returns the plan even when it is empty.
@@ -366,7 +370,7 @@ impl<'a> JobExecutor<'a> {
             plan_text,
             plan_json: show.stdout,
             plan_file,
-            additional_output: self.take_additional_output(runner.filter.as_ref()),
+            additional_output: self.take_additional_output(&runner.filter),
             steps,
         })
     }
@@ -416,7 +420,7 @@ impl<'a> JobExecutor<'a> {
         Ok(ApplyResult {
             output,
             summary,
-            additional_output: self.take_additional_output(runner.filter.as_ref()),
+            additional_output: self.take_additional_output(&runner.filter),
             steps,
             pre_plan: None,
         })
@@ -449,7 +453,7 @@ impl<'a> JobExecutor<'a> {
         Ok(ApplyResult {
             summary: apply_summary_from_output(&out.stdout),
             output: cleanup_apply_output(&out.stdout),
-            additional_output: self.take_additional_output(runner.filter.as_ref()),
+            additional_output: self.take_additional_output(&runner.filter),
             steps,
             pre_plan: None,
         })

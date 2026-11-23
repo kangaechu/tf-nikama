@@ -49,6 +49,7 @@ impl RunContext {
             init_lock: self.init_lock.clone(),
             isolate_data_dir: shared_dir,
             cli_config: self.cli_config.clone(),
+            redact_secrets: self.config.redact_secrets,
         }
     }
 

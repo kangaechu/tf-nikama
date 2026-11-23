@@ -222,6 +222,7 @@ pub(super) fn convert(raw: RawConfig, dir: &Path) -> Result<Config, ConfigError>
         comment,
         wakeup_words,
         autoplan_modules,
+        redact_secrets: raw.redact_secrets.unwrap_or(true),
         graph,
     })
 }

@@ -5,6 +5,7 @@ mod exec;
 mod output;
 mod plan_json;
 pub mod providers;
+mod redact;
 mod runner;
 #[cfg(test)]
 mod tests;

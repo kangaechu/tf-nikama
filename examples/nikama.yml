@@ -50,6 +50,9 @@ workflows:
         - name: TF_VAR_api_key
           value_from: API_KEY
     plan:
+      # Repository-specific pattern redacted from the stage output, on top
+      # of the built-in secret redaction (`redact_secrets` below).
+      filter_regex: "internal-token-[a-z0-9]+"
       steps:
         - init:
             extra_args: ["-upgrade"]
@@ -107,3 +110,8 @@ comment:
 allowed_providers:
   - hashicorp/aws
   - hashicorp/random
+
+# Replace secret-looking values in plan / apply output (`password = ...`,
+# credentials in URLs, PEM private keys, well-known token formats) with
+# <REDACTED> before it is logged or posted. Default: true.
+redact_secrets: true

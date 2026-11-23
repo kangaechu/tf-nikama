@@ -921,3 +921,19 @@ fn timezone_is_validated() {
         assert!(err_msg(load(&yaml)).contains("timezone must be an IANA time zone"));
     }
 }
+
+#[test]
+fn redact_secrets_defaults_to_on() {
+    assert!(load("projects: []\n").unwrap().redact_secrets);
+    assert!(
+        load("projects: []\nredact_secrets: true\n")
+            .unwrap()
+            .redact_secrets
+    );
+    assert!(
+        !load("projects: []\nredact_secrets: false\n")
+            .unwrap()
+            .redact_secrets
+    );
+    assert!(err_msg(load("projects: []\nredact_secrets: yes-please\n")).contains("redact_secrets"));
+}

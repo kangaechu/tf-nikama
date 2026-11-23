@@ -24,6 +24,7 @@ For a flat list of every input, key and variable with its default, see
 - [Who can run commands](#who-can-run-commands)
 - [Trusting the configuration](#trusting-the-configuration)
 - [Restricting providers](#restricting-providers)
+- [Secrets in plan output](#secrets-in-plan-output)
 - [What protects against whom](#what-protects-against-whom)
 - [Environment variables](#environment-variables)
 - [Validating locally](#validating-locally)
@@ -514,6 +515,59 @@ downloaded or executed. Built-in providers (`terraform_data`) are unaffected.
   `provider_installation` block (a filesystem or network mirror), put the
   `include` list there instead and leave `allowed-providers` unset.
   `TF_PLUGIN_CACHE_DIR` keeps working.
+
+## Secrets in plan output
+
+Terraform masks only the attributes a provider schema marks as sensitive. A
+secret kept in an ordinary attribute, such as a container's environment
+variables, instance user data or a connection string in a settings map, is
+printed in clear by `terraform plan`, and that text ends up in the PR comment
+and the Actions log, where everyone who can read the repository sees it.
+
+nikama redacts the common shapes before the output is logged or posted
+(`redact_secrets: true`, the default):
+
+- The value of a key that looks like a secret: `password`, `passwd`, `pwd`,
+  `passphrase`, `secret`, `token`, `api_key`, `private_key` or
+  `credential(s)` as part of the key name, in the forms `key = "value"`,
+  `"KEY" = "value"`, `"key": "value"` and `KEY=value`, including the
+  `-> "new value"` half of an update. Keys that only describe a secret
+  (`secret_arn`, `secret_id`, `token_type`, `password_length`, `..._name`,
+  `..._version`, `..._policy`) are left alone, as are `(sensitive value)`
+  and `(known after apply)`.
+- A heredoc (`<<-EOT`) assigned to such a key: the whole block is dropped.
+- A PEM private key under any key: the lines between `-----BEGIN ... PRIVATE
+  KEY-----` and `-----END ... PRIVATE KEY-----` become one `<REDACTED>` line.
+  Certificates are kept.
+- The password in a URL (`postgres://user:password@host`).
+- Well-known token formats: AWS access key ids, GitHub tokens, Slack tokens,
+  Google API keys and JSON Web Tokens.
+
+The redaction covers the plan and apply text, the output of `run:` steps
+and what they write to `$NIKAMA_OUT`. It does not touch the plan file or the
+JSON nikama parses for the resource counts, so the summary table is exact
+even when a value was hidden. Over-redaction is possible: a `secret_env`
+map is hidden whole, and `token_bucket = "..."` loses its value.
+
+A secret whose key gives nothing away (`value = "hunter2"`, a tag, a line of
+free text) is not caught. Add a `filter_regex` to the workflow's `plan` and
+`apply` stages for those; it uses the Rust `regex` syntax (no lookaround) and
+is applied before the built-in patterns:
+
+```yaml
+workflows:
+  default:
+    plan:
+      filter_regex: "internal-token-[a-z0-9]+"
+      steps: [init, plan]
+    apply:
+      filter_regex: "internal-token-[a-z0-9]+"
+      steps: [init, apply]
+```
+
+`redact_secrets: false` turns the built-in patterns off and leaves only
+`filter_regex`. Like every other key it is read from the trusted
+configuration when `config-ref` is set.
 
 ## What protects against whom
 

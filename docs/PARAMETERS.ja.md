@@ -117,6 +117,7 @@ with:
 | `autoplan_modules` | `false` | プロジェクトが参照するローカルモジュール（`./` または `../` のソース、推移的にたどる）をプロジェクトの一部として扱います。 |
 | `allowed_plan_args` | `[]` | コメントが `--` の後ろで `terraform plan` に渡せる引数のパターン。空なら `--` は拒否されます。 |
 | `allowed_providers` | `[]` | この設定が許可するプロバイダソースパターン。`allowed-providers` 入力を狭めることしかできません。 |
+| `redact_secrets` | `true` | plan / apply 出力の秘密情報らしい値（`password = ...`、URL 内の認証情報、PEM 秘密鍵、形式が決まっているトークン）を、ログ出力・投稿の前に `<REDACTED>` に置き換えます。[plan 出力に含まれる秘密情報](CONFIGURATION.ja.md#plan-出力に含まれる秘密情報) を参照。 |
 | `drift_include_patterns` | `[]` | `dir` が一致するプロジェクトをドリフト検知の対象にします。 |
 | `drift_exclude_patterns` | `[]` | `dir` が一致するプロジェクトをドリフト検知から外します。 |
 | `concurrency.max_parallel` | `4` | 同時に実行する plan の数。 |
@@ -156,7 +157,7 @@ with:
 | `env_vars.state[]` | `[]` | `init`（state バックエンド）用の環境変数。各要素は `name` と、`value` または `value_from`（ワークフローの環境変数名）。nikama 自身が設定する変数（`allowed-providers` 用の `TF_CLI_CONFIG_FILE`、`TF_DATA_DIR`）が同名の指定より優先されます。 |
 | `env_vars.commands[]` | `[]` | `plan` / `apply` / `destroy` と `run:` ステップ用の環境変数。形式は同じ。nikama 自身が設定する変数（`TF_CLI_CONFIG_FILE`、`TF_DATA_DIR`、`run:` ステップでは[「`run:` ステップで使える変数」](#run-ステップで使える変数)の変数）が同名の指定より優先されます。 |
 | `plan.steps[]` | `[init, plan]` | plan ステージのステップ。後述。 |
-| `plan.filter_regex`、`apply.filter_regex` | なし | 正規表現。ステージ出力の一致箇所はログとコメントで `<REDACTED>` に置き換えられます。 |
+| `plan.filter_regex`、`apply.filter_regex` | なし | 正規表現（Rust の `regex` 構文）。ステージ出力の一致箇所は、組み込みの伏せ字処理（`redact_secrets`）より先に、ログとコメントで `<REDACTED>` に置き換えられます。 |
 | `apply.steps[]` | `[init, apply]` | apply ステージのステップ。 |
 | `workflow_configuration.on_pull_request_pushed` | `[nikama plan]` | push 時に実行するコマンド。コメントと同様に `destroy` は拒否されます。 |
 | `workflow_configuration.on_pull_request_closed` | `[nikama unlock]` | クローズまたはマージ時に実行するコマンド。 |

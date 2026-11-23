@@ -23,6 +23,7 @@
 - [コマンドを実行できる人](#コマンドを実行できる人)
 - [設定の信頼](#設定の信頼)
 - [プロバイダの制限](#プロバイダの制限)
+- [plan 出力に含まれる秘密情報](#plan-出力に含まれる秘密情報)
 - [誰から何を守るか](#誰から何を守るか)
 - [環境変数](#環境変数)
 - [ローカルでの検証](#ローカルでの検証)
@@ -506,6 +507,56 @@ README のクイックスタートの `if:` ガードは、リポジトリ外か
   ネットワークミラー）がある場合は、そちらに `include` リストを書き、
   `allowed-providers` は未設定にしてください。`TF_PLUGIN_CACHE_DIR` は引き続き
   動作します。
+
+## plan 出力に含まれる秘密情報
+
+Terraform が伏せ字にするのは、プロバイダのスキーマで sensitive と宣言された
+属性だけです。コンテナの環境変数、インスタンスの user data、設定マップ内の接続
+文字列など、通常の属性に入った秘密情報は `terraform plan` が平文で出力し、その
+テキストは PR コメントと Actions のログに載って、リポジトリを読める人全員の目に
+触れます。
+
+nikama はよくある形を、ログ出力・投稿の前に伏せ字にします
+（`redact_secrets: true`、デフォルト）:
+
+- 秘密情報らしいキーの値。キー名に `password`、`passwd`、`pwd`、`passphrase`、
+  `secret`、`token`、`api_key`、`private_key`、`credential(s)` を含むもので、
+  `key = "value"`、`"KEY" = "value"`、`"key": "value"`、`KEY=value` の形、
+  更新時の `-> "new value"` 側も対象です。秘密情報について説明するだけのキー
+  （`secret_arn`、`secret_id`、`token_type`、`password_length`、`..._name`、
+  `..._version`、`..._policy`）と、`(sensitive value)`・`(known after apply)`
+  はそのまま残します。
+- そのようなキーに代入されたヒアドキュメント（`<<-EOT`）: ブロック全体を落とします。
+- どのキーの下にあっても PEM 秘密鍵: `-----BEGIN ... PRIVATE KEY-----` と
+  `-----END ... PRIVATE KEY-----` の間の行は 1 行の `<REDACTED>` になります。
+  証明書は残します。
+- URL 内のパスワード（`postgres://user:password@host`）。
+- 形式が決まっているトークン: AWS アクセスキー ID、GitHub トークン、Slack
+  トークン、Google API キー、JSON Web Token。
+
+対象は plan / apply のテキスト、`run:` ステップの出力、`$NIKAMA_OUT` に書かれた
+内容です。plan ファイルと、リソース数の集計に使う JSON には手を付けないので、値を
+伏せても集計表は正確です。伏せすぎることはあります。`secret_env` マップは丸ごと
+隠れ、`token_bucket = "..."` は値を失います。
+
+キー名から秘密情報と分からないもの（`value = "hunter2"`、タグ、自由記述の 1 行）
+は捕まえられません。そうしたものにはワークフローの `plan` / `apply` ステージに
+`filter_regex` を追加してください。Rust の `regex` 構文（先読み・後読みなし）で、
+組み込みパターンより先に適用されます:
+
+```yaml
+workflows:
+  default:
+    plan:
+      filter_regex: "internal-token-[a-z0-9]+"
+      steps: [init, plan]
+    apply:
+      filter_regex: "internal-token-[a-z0-9]+"
+      steps: [init, apply]
+```
+
+`redact_secrets: false` で組み込みパターンを無効にすると `filter_regex` だけが
+残ります。他のキーと同様、`config-ref` を設定していれば信頼された設定から読まれます。
 
 ## 誰から何を守るか
 

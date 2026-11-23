@@ -1,5 +1,6 @@
 //! Terraform / OpenTofu process runner.
 
+use super::redact::Redactor;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -42,9 +43,9 @@ pub struct IacRunner {
     pub workspace: String,
     /// Prefix for console output lines, e.g. `[my-project]`.
     pub log_prefix: String,
-    /// Regex whose matches are replaced with `<REDACTED>` in captured and
-    /// printed output.
-    pub filter: Option<regex::Regex>,
+    /// Redaction applied to captured and printed output (the stage's
+    /// `filter_regex` plus the built-in patterns).
+    pub filter: Redactor,
     /// Extra environment applied to every invocation (e.g. `TF_DATA_DIR`).
     pub base_env: BTreeMap<String, String>,
 }
@@ -114,7 +115,7 @@ impl IacRunner {
         env: &BTreeMap<String, String>,
     ) -> std::io::Result<CmdOutput> {
         let args = init_args(extra_args);
-        let out = self.run(&args, env, true).await?;
+        let out = self.run(&args, env, true, true).await?;
         if !out.success() {
             return Ok(out);
         }
@@ -129,6 +130,7 @@ impl IacRunner {
                     ],
                     env,
                     true,
+                    true,
                 )
                 .await?;
             if !select.success() {
@@ -141,6 +143,7 @@ impl IacRunner {
                             self.workspace.clone(),
                         ],
                         env,
+                        true,
                         true,
                     )
                     .await?;
@@ -160,8 +163,13 @@ impl IacRunner {
         env: &BTreeMap<String, String>,
         plan_path: &Path,
     ) -> std::io::Result<CmdOutput> {
-        self.run(&plan_args(extra_args, request_args, plan_path), env, true)
-            .await
+        self.run(
+            &plan_args(extra_args, request_args, plan_path),
+            env,
+            true,
+            true,
+        )
+        .await
     }
 
     pub async fn apply(
@@ -170,7 +178,7 @@ impl IacRunner {
         env: &BTreeMap<String, String>,
         plan_path: Option<&Path>,
     ) -> std::io::Result<CmdOutput> {
-        self.run(&apply_args(extra_args, plan_path), env, true)
+        self.run(&apply_args(extra_args, plan_path), env, true, true)
             .await
     }
 
@@ -179,7 +187,7 @@ impl IacRunner {
         extra_args: &[String],
         env: &BTreeMap<String, String>,
     ) -> std::io::Result<CmdOutput> {
-        self.run(&destroy_args(extra_args), env, true).await
+        self.run(&destroy_args(extra_args), env, true, true).await
     }
 
     pub async fn show_json(
@@ -193,7 +201,8 @@ impl IacRunner {
             "-json".to_string(),
             plan_path.to_string_lossy().to_string(),
         ];
-        self.run(&args, env, false).await
+        // Parsed, never posted: redaction would only break the JSON.
+        self.run(&args, env, false, false).await
     }
 
     pub async fn show_text(
@@ -206,14 +215,17 @@ impl IacRunner {
             "-no-color".to_string(),
             plan_path.to_string_lossy().to_string(),
         ];
-        self.run(&args, env, false).await
+        self.run(&args, env, false, true).await
     }
 
+    /// `redact: false` skips the output filter (for output that is parsed
+    /// rather than shown).
     async fn run(
         &self,
         args: &[String],
         env: &BTreeMap<String, String>,
         print: bool,
+        redact: bool,
     ) -> std::io::Result<CmdOutput> {
         tracing::info!(
             target: "nikama::exec",
@@ -235,7 +247,12 @@ impl IacRunner {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
-        run_streaming(cmd, &self.log_prefix, self.filter.clone(), print).await
+        let filter = if redact {
+            self.filter.clone()
+        } else {
+            Redactor::none()
+        };
+        run_streaming(cmd, &self.log_prefix, filter, print).await
     }
 }
 
@@ -244,7 +261,7 @@ impl IacRunner {
 pub async fn run_streaming(
     mut cmd: tokio::process::Command,
     prefix: &str,
-    filter: Option<regex::Regex>,
+    filter: Redactor,
     print: bool,
 ) -> std::io::Result<CmdOutput> {
     let mut child = cmd.spawn()?;
@@ -269,16 +286,15 @@ pub async fn run_streaming(
 async fn collect<R: tokio::io::AsyncRead + Unpin>(
     reader: R,
     prefix: &str,
-    filter: Option<regex::Regex>,
+    mut filter: Redactor,
     print: bool,
     is_err: bool,
 ) -> String {
     let mut lines = BufReader::new(reader).lines();
     let mut buf = String::new();
     while let Ok(Some(line)) = lines.next_line().await {
-        let line = match &filter {
-            Some(re) => re.replace_all(&line, "<REDACTED>").into_owned(),
-            None => line,
+        let Some(line) = filter.line(&line) else {
+            continue;
         };
         if print {
             if is_err {

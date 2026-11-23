@@ -51,6 +51,9 @@ pub struct RawConfig {
     /// after `--`. Empty (default): the feature is off.
     #[serde(default)]
     pub allowed_plan_args: Vec<String>,
+    /// Apply the built-in secret redaction to plan / apply output. Default
+    /// `true`; `false` leaves only the stages' `filter_regex`.
+    pub redact_secrets: Option<bool>,
 
     // ---- unsupported keys (backend-only or unused in Digger) ----
     pub respect_layers: Option<Value>,
